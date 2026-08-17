@@ -40,6 +40,7 @@ DEVICE_COUNT=0
 WORKERS=1
 PYTEST_RC=0
 APPIUM_STARTED=0
+PYTEST_RAN=0
 
 log()  { printf '[e2e] %s\n' "$*"; }
 warn() { printf '[e2e] WARN: %s\n' "$*" >&2; }
@@ -58,7 +59,15 @@ pick_python() {
 }
 PYTHON="$(pick_python)"
 
-mkdir -p "${RUN_DIR}/reports" "${RUN_DIR}/logs" "${RUN_DIR}/traces"
+if ! [[ "${MAX_PARALLEL}" =~ ^[0-9]+$ ]]; then
+  warn "DEVICE_FARM_MAX_PARALLEL='${MAX_PARALLEL}' is not a non-negative integer; using 4"
+  MAX_PARALLEL=4
+fi
+
+if ! mkdir -p "${RUN_DIR}/reports" "${RUN_DIR}/logs" "${RUN_DIR}/traces" 2>/dev/null; then
+  warn "cannot create the artifact tree at ${RUN_DIR} (check DEVICE_FARM_ARTIFACTS_ROOT permissions)"
+  exit 1
+fi
 
 # ------------------------------------------------------------------ teardown
 teardown() {
@@ -95,9 +104,13 @@ summary() {
   printf '[e2e] xdist workers : %s\n' "${WORKERS}"
   printf '[e2e] appium server : %s\n' "$([[ ${APPIUM_STARTED} -eq 1 ]] && echo "started (${APPIUM_URL})" || echo 'not started')"
   printf '[e2e] artifacts     : reports=%s logs=%s traces=%s\n' "${reports}" "${logs}" "${traces}"
-  printf '[e2e] pytest exit   : %s\n' "${PYTEST_RC}"
-  if [[ "${DEVICE_COUNT}" -eq 0 ]]; then
-    printf '[e2e] note          : zero devices present - device tests were skipped, not failed.\n'
+  if [[ "${PYTEST_RAN}" -eq 1 ]]; then
+    printf '[e2e] pytest exit   : %s\n' "${PYTEST_RC}"
+    if [[ "${DEVICE_COUNT}" -eq 0 && "${PYTEST_RC}" -eq 0 ]]; then
+      printf '[e2e] note          : zero devices present - device tests were skipped, not failed.\n'
+    fi
+  else
+    printf '[e2e] pytest exit   : not run (the run aborted before pytest started)\n'
   fi
   printf '[e2e] ===============================================\n'
 }
@@ -202,6 +215,7 @@ else
 fi
 
 log "pytest ${PYTEST_ARGS[*]} $*"
+PYTEST_RAN=1
 ${PYTHON} -m pytest "${PYTEST_ARGS[@]}" "$@" 2>&1 | tee "${RUN_DIR}/reports/pytest.log"
 PYTEST_RC=${PIPESTATUS[0]}
 
