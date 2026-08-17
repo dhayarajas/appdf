@@ -1,0 +1,14 @@
+# Test run output: reports, device logs, HAR/PCAP traces
+artifacts/
+
+# Local Python environment / caches
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+
+# Local trace tooling leftovers
+*.har
+*.pcap
+*.flows

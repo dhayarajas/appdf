@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "soccom-device-farm"
+version = "0.1.0"
+description = "Self-hosted mobile device farm and Appium/Pytest E2E scaffold for soccom"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+
+dependencies = [
+    "Appium-Python-Client>=4.0,<6",
+    "pytest>=8.0,<9",
+    "pytest-xdist>=3.5,<4",
+    "mitmproxy>=10.2",
+    "requests>=2.31,<3",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.6",
+]
+
+[tool.setuptools]
+packages = ["framework", "proxy", "capture"]
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+# The scaffold is imported as top-level packages (framework/, proxy/, capture/)
+# rooted at this directory.
+pythonpath = ["."]
+addopts = "-ra --strict-markers"
+log_cli = true
+log_cli_level = "INFO"
+markers = [
+    "e2e: end-to-end test requiring an Appium session against a real device",
+    "android: Android-only test",
+    "ios: iOS-only test (Darwin hosts)",
+    "requires_device: skipped automatically when the device pool is empty",
+    "requires_proxy: skipped automatically when mitmdump is unavailable",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "W"]
