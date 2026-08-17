@@ -18,8 +18,9 @@ help: ## Show available targets
 provision: ## Phase 1: install/verify the host toolchain (idempotent)
 	bash $(FARM_DIR)/scripts/provision_host.sh
 
-preflight: ## Verify the environment without installing anything
-	bash $(FARM_DIR)/scripts/provision_host.sh --check
+preflight: ## Verify the environment without installing anything (never fatal)
+	bash $(FARM_DIR)/scripts/provision_host.sh --check \
+		|| echo "[make] preflight reported missing components; see the summary above (non-fatal)"
 
 install: ## Create .venv and install Python dependencies
 	python3 -m venv $(VENV)

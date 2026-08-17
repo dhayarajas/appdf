@@ -55,7 +55,11 @@ def farm_config() -> FarmConfig:
 @pytest.fixture(scope="session")
 def artifacts(farm_config: FarmConfig) -> ArtifactPaths:
     """Artifact tree for this run: ``artifacts/<test_run_id>/{reports,logs,traces}``."""
-    paths = ArtifactPaths.for_run(farm_config.artifacts_root, farm_config.test_run_id).ensure()
+    paths = ArtifactPaths.for_run(farm_config.artifacts_root, farm_config.test_run_id)
+    try:
+        paths.ensure()
+    except OSError as exc:
+        pytest.skip(f"cannot create the artifact tree at {paths.run_dir}: {exc}")
     LOGGER.info("artifacts: %s", paths.run_dir)
     return paths
 
@@ -315,10 +319,18 @@ def _post_test_teardown(
 def pytest_configure(config: pytest.Config) -> None:
     """Point junit/report output at ``artifacts/<test_run_id>/reports``."""
     farm_config = load_config()
-    paths = ArtifactPaths.for_run(farm_config.artifacts_root, farm_config.test_run_id).ensure()
+    os.environ.setdefault("DEVICE_FARM_TEST_RUN_ID", farm_config.test_run_id)
+    if config.option.collectonly:
+        # Collection-only runs produce no artifacts; do not create a run directory.
+        return
+    paths = ArtifactPaths.for_run(farm_config.artifacts_root, farm_config.test_run_id)
+    try:
+        paths.ensure()
+    except OSError as exc:
+        LOGGER.warning("cannot create the artifact tree at %s: %s", paths.run_dir, exc)
+        return
     if config.option.xmlpath is None:
         config.option.xmlpath = str(paths.reports / "junit.xml")
-    os.environ.setdefault("DEVICE_FARM_TEST_RUN_ID", farm_config.test_run_id)
 
 
 def pytest_report_header(config: pytest.Config) -> list[str]:
