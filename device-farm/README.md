@@ -232,7 +232,7 @@ sequenceDiagram
 ### Android emulator (no hardware)
 
 ```bash
-./scripts/emulator_up.sh --check          # KVM, SDK, AVD readiness (never boots)
+./scripts/emulator_up.sh --check          # accelerator, SDK, AVD readiness (never boots)
 make emulator                             # boot headless AVD, wait for boot_completed
 make install-ca                           # mitmproxy CA -> system store (rooted AVD only)
 
@@ -251,6 +251,22 @@ that HTTPS entries were actually decrypted — every assertion message names the
 likely cause (proxy not applied, CA not trusted, pinned app). Verified on this
 scaffold with an Android 14 AOSP AVD and F-Droid: 6 decrypted HTTPS entries
 across 3 hosts.
+
+#### macOS host
+
+macOS has no `/dev/kvm`: the Android emulator uses Apple's
+Hypervisor.framework, which needs no user setup beyond a recent `emulator`
+package, so `./scripts/emulator_up.sh --check` reports `ready to boot` once the
+SDK and AVD are in place. Recommended environment:
+
+```bash
+export ANDROID_HOME="$HOME/Library/Android/sdk"   # Android Studio default, also the script's fallback
+export JAVA_HOME="$(/usr/libexec/java_home -v 17)"
+```
+
+On Apple Silicon the script defaults `AVD_ABI` to `arm64-v8a` (Intel Macs keep
+`x86_64`); override with `DEVICE_FARM_AVD_ABI`. Everything after boot —
+`make install-ca`, `make har`, `make emulator-down` — is identical to Linux.
 
 ### Physical Android device
 
