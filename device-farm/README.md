@@ -28,10 +28,26 @@ otherwise prints copy-pasteable install guidance. It then verifies `adb`,
 drivers (`uiautomator2` always; `xcuitest` only when `uname` reports `Darwin`).
 A missing/absent device is reported as a warning, never a hard failure.
 
-Device pooling, parallel session limits, allocation strategy and health checks
-live in `config/appium-device-farm.config.json`, consumed by the
+Plugin platform selection, session limits, and dashboard enablement live in
+`config/appium-device-farm.config.json`, consumed by the
 [`appium-device-farm`](https://github.com/AppiumTestDistribution/appium-device-farm)
 plugin.
+
+The checked-in plugin configuration contains only keys accepted by the installed
+plugin schema. Devices are discovered dynamically through `adb` / `xcdevice`;
+the plugin's include/exclude pool controls, allocation strategy, and health-check
+settings are not schema-supported configuration options. `maxSessions` bounds
+Appium-side concurrency, while the pytest-xdist worker count remains
+`min(discovered devices, DEVICE_FARM_MAX_PARALLEL)`. Dashboard support is enabled
+with the plugin's default `/device-farm` path.
+
+The previous draft also used unsupported `android-device-type`,
+`ios-device-type`, `derived-data-path`, `skip-chrome-download`,
+`device-availability-timeout-ms`, `device-retry-interval-ms`, `max-sessions`,
+`remote-connection-timeout-ms`, `bind-hostport`, `sendNodeDevicesToHub`, `pool`,
+`parallel`, `allocation`, `healthChecks`, and `dashboard` keys, plus null-valued
+`hub` and `cloud` options. The valid camelCase equivalents are retained where
+the schema provides them; the remaining options are intentionally omitted.
 
 ### Phase 2 — Network interception / trace pipeline
 
