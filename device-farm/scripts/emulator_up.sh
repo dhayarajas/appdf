@@ -186,8 +186,12 @@ done
 # unbound-variable error under `set -u` in bash 3.2, which stock macOS ships.
 if [[ -n "${MISSING_PACKAGES[*]:-}" ]]; then
   log "installing SDK packages: ${MISSING_PACKAGES[*]} ..."
+  log "         a system image is ~1GB, so the first run downloads for a while"
   yes 2>/dev/null | sdkmanager --licenses >/dev/null 2>&1
-  sdkmanager --install "${MISSING_PACKAGES[@]}" >/dev/null \
+  # Progress goes to the terminal unfiltered: swallowing it made a multi-minute
+  # download look like a hang. Piping it through a filter would put sdkmanager's
+  # status behind the pipe's exit code, so the output is left alone.
+  sdkmanager --install "${MISSING_PACKAGES[@]}" \
     || die "sdkmanager could not install: ${MISSING_PACKAGES[*]}"
 fi
 
