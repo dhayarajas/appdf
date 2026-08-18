@@ -41,6 +41,7 @@ markers = [
     "ios: iOS-only test (Darwin hosts)",
     "requires_device: skipped automatically when the device pool is empty",
     "requires_proxy: skipped automatically when mitmdump is unavailable",
+    "har: asserts on the exported HAR; needs a device routed through the proxy",
 ]
 
 [tool.ruff]
