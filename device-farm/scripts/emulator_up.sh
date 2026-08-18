@@ -11,21 +11,38 @@
 #   scripts/emulator_up.sh --stop          # shut the emulator down
 #   DEVICE_FARM_AVD_NAME=farm34 DEVICE_FARM_AVD_API=34 scripts/emulator_up.sh
 #
-# Requires KVM (/dev/kvm writable). Without it the script reports the exact
-# reason and exits 1 instead of hanging on a software-rendered boot.
+# Acceleration is required so the boot never falls back to a software-rendered
+# emulator: /dev/kvm on Linux, Apple Hypervisor.framework on macOS. Without it
+# the script reports the exact reason and exits 1 instead of hanging.
 set -uo pipefail
 
 FARM_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
+HOST_OS="$(uname -s)"
+HOST_ARCH="$(uname -m)"
+
+if [[ "${HOST_OS}" == "Darwin" ]]; then
+  DEFAULT_SDK_ROOT="${HOME}/Library/Android/sdk"
+else
+  DEFAULT_SDK_ROOT="${HOME}/android-sdk"
+fi
+
+# Apple Silicon only ships arm64-v8a system images; everything else stays x86_64.
+if [[ "${HOST_OS}" == "Darwin" && "${HOST_ARCH}" == "arm64" ]]; then
+  DEFAULT_AVD_ABI=arm64-v8a
+else
+  DEFAULT_AVD_ABI=x86_64
+fi
+
 AVD_NAME="${DEVICE_FARM_AVD_NAME:-farm34}"
 AVD_API="${DEVICE_FARM_AVD_API:-34}"
-AVD_ABI="${DEVICE_FARM_AVD_ABI:-x86_64}"
+AVD_ABI="${DEVICE_FARM_AVD_ABI:-${DEFAULT_AVD_ABI}}"
 AVD_TAG="${DEVICE_FARM_AVD_TAG:-default}"  # 'default' = AOSP, keeps adb root working
 AVD_DEVICE="${DEVICE_FARM_AVD_DEVICE:-pixel_5}"
 AVD_MEMORY="${DEVICE_FARM_AVD_MEMORY:-3072}"
 AVD_PORT="${DEVICE_FARM_AVD_PORT:-5554}"
 BOOT_TIMEOUT="${DEVICE_FARM_AVD_BOOT_TIMEOUT:-300}"
-SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-${HOME}/android-sdk}}"
+SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-${DEFAULT_SDK_ROOT}}}"
 IMAGE="system-images;android-${AVD_API};${AVD_TAG};${AVD_ABI}"
 BUILD_TOOLS_VERSION="${DEVICE_FARM_BUILD_TOOLS:-${AVD_API}.0.0}"
 SERIAL="emulator-${AVD_PORT}"
@@ -40,7 +57,7 @@ for arg in "$@"; do
   case "${arg}" in
     --check) MODE=check ;;
     --stop) MODE=stop ;;
-    -h|--help) sed -n '2,15p' "${BASH_SOURCE[0]}"; exit 0 ;;
+    -h|--help) sed -n '2,16p' "${BASH_SOURCE[0]}"; exit 0 ;;
     *) die "unknown option: ${arg} (try --help)" ;;
   esac
 done
@@ -48,7 +65,28 @@ done
 export ANDROID_SDK_ROOT="${SDK_ROOT}" ANDROID_HOME="${SDK_ROOT}"
 export PATH="${SDK_ROOT}/platform-tools:${SDK_ROOT}/emulator:${SDK_ROOT}/cmdline-tools/latest/bin:${PATH}"
 
-kvm_state() {
+# Acceleration state, normalised across hosts:
+#   ready     - accelerated, nothing to launch through a helper group (macOS)
+#   writable  - /dev/kvm usable by this process
+#   needs-sg  - kvm group membership exists but is not active in this process
+#   absent    - no accelerator on this host
+#   unwritable- /dev/kvm exists but this user cannot use it
+accel_state() {
+  if [[ "${HOST_OS}" == "Darwin" ]]; then
+    # macOS emulators use Apple Hypervisor.framework, which needs no user setup.
+    # -accel-check is authoritative when the emulator package is installed.
+    local accel_check="${SDK_ROOT}/emulator/emulator"
+    if [[ -x "${accel_check}" ]]; then
+      if "${accel_check}" -accel-check >/dev/null 2>&1; then
+        printf 'ready'
+      else
+        printf 'unwritable'
+      fi
+    else
+      printf 'writable'
+    fi
+    return
+  fi
   if [[ ! -e /dev/kvm ]]; then
     printf 'absent'
   elif [[ -w /dev/kvm ]]; then
@@ -64,8 +102,9 @@ kvm_state() {
 }
 
 # Run a command with the kvm group applied when the current process lacks it.
+# There is no kvm group on macOS, so the wrapper is a plain eval there.
 with_kvm() {
-  if [[ "$(kvm_state)" == "needs-sg" ]]; then
+  if [[ "${HOST_OS}" != "Darwin" && "$(accel_state)" == "needs-sg" ]]; then
     sg kvm -c "$*"
   else
     eval "$*"
@@ -92,11 +131,17 @@ for tool in java; do
 done
 [[ -x "${SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager" ]] \
   || { warn "sdkmanager not found under ${SDK_ROOT}/cmdline-tools/latest"; MISSING=1; }
-KVM="$(kvm_state)"
+ACCEL="$(accel_state)"
+if [[ "${HOST_OS}" == "Darwin" ]]; then
+  ACCEL_LABEL="hypervisor.framework"
+else
+  ACCEL_LABEL="kvm"
+fi
 log "sdk root : ${SDK_ROOT}"
+log "host     : ${HOST_OS}/${HOST_ARCH}"
 log "avd      : ${AVD_NAME} (api ${AVD_API}, ${AVD_TAG}/${AVD_ABI})"
-log "kvm      : ${KVM}"
-[[ "${KVM}" == "absent" || "${KVM}" == "unwritable" ]] && MISSING=1
+log "accel    : ${ACCEL_LABEL} ${ACCEL}"
+[[ "${ACCEL}" == "absent" || "${ACCEL}" == "unwritable" ]] && MISSING=1
 
 if [[ "${MODE}" == "check" ]]; then
   if emulator_running; then
@@ -105,10 +150,16 @@ if [[ "${MODE}" == "check" ]]; then
   fi
   [[ "${MISSING}" -eq 0 ]] && { log "status   : ready to boot"; exit 0; }
   warn "not ready: address the items above"
-  case "${KVM}" in
-    absent) warn "this host has no /dev/kvm; an emulator cannot be booted here" ;;
-    unwritable) warn "grant KVM access: sudo usermod -aG kvm \$USER && sudo chmod 660 /dev/kvm" ;;
-  esac
+  if [[ "${HOST_OS}" == "Darwin" ]]; then
+    case "${ACCEL}" in
+      unwritable) warn "emulator -accel-check failed; update the SDK emulator package (sdkmanager --install emulator) and confirm macOS 12+" ;;
+    esac
+  else
+    case "${ACCEL}" in
+      absent) warn "this host has no /dev/kvm; an emulator cannot be booted here" ;;
+      unwritable) warn "grant KVM access: sudo usermod -aG kvm \$USER && sudo chmod 660 /dev/kvm" ;;
+    esac
+  fi
   exit 1
 fi
 
