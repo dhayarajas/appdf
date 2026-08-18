@@ -37,6 +37,24 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+# Stock macOS ships no GNU `timeout`, so bound long-running commands by hand.
+# Returns 124 when the deadline is hit, like timeout(1) does.
+bounded() {
+  local deadline="$1"; shift
+  "$@" &
+  local pid=$! waited=0
+  while kill -0 "${pid}" 2>/dev/null; do
+    sleep 1
+    waited=$((waited + 1))
+    if (( waited >= deadline )); then
+      kill "${pid}" 2>/dev/null
+      wait "${pid}" 2>/dev/null
+      return 124
+    fi
+  done
+  wait "${pid}"
+}
+
 log() { printf '[ca] %s\n' "$*"; }
 warn() { printf '[ca] WARN  %s\n' "$*" >&2; }
 die() { printf '[ca] ERROR %s\n' "$*" >&2; exit 1; }
@@ -50,7 +68,7 @@ command -v adb >/dev/null 2>&1 || die "adb not found; install platform-tools (se
 if [[ ! -f "${PEM}" ]]; then
   if command -v mitmdump >/dev/null 2>&1; then
     log "generating the mitmproxy CA in ${CONFDIR} ..."
-    timeout 8 mitmdump --set "confdir=${CONFDIR}" -q >/dev/null 2>&1
+    bounded 8 mitmdump --set "confdir=${CONFDIR}" -q >/dev/null 2>&1
   fi
   [[ -f "${PEM}" ]] || die "no CA at ${PEM}; run mitmdump once or pip install mitmproxy"
 fi
@@ -111,9 +129,13 @@ if "${ADB[@]}" shell "[ -d ${APEX_STORE} ]"; then
   log "restarting the framework so apps inherit the mount ..."
   "${ADB[@]}" shell 'stop; start' >/dev/null 2>&1
   sleep 5
-  timeout 240 "${ADB[@]}" shell \
-    'while [[ -z $(getprop sys.boot_completed) ]]; do sleep 3; done' >/dev/null 2>&1 \
-    || die "the framework did not come back up; check 'adb logcat -b crash'"
+  waited=0
+  until [[ "$("${ADB[@]}" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" == "1" ]]; do
+    sleep 3
+    waited=$((waited + 3))
+    (( waited >= 240 )) \
+      && die "the framework did not come back up; check 'adb logcat -b crash'"
+  done
 fi
 
 if trusted; then

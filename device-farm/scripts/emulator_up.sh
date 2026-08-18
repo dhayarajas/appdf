@@ -184,7 +184,9 @@ MISSING_PACKAGES=()
 for package in "${REQUIRED_PACKAGES[@]}"; do
   grep -qF " ${package} " <<<"${INSTALLED}" || MISSING_PACKAGES+=("${package}")
 done
-if (( ${#MISSING_PACKAGES[@]} > 0 )); then
+# ${#arr[@]} on an empty array is an unbound-variable error under `set -u` in
+# bash 3.2, which is what stock macOS ships.
+if [[ -n "${MISSING_PACKAGES[*]:-}" ]]; then
   log "installing SDK packages: ${MISSING_PACKAGES[*]} ..."
   yes 2>/dev/null | sdkmanager --licenses >/dev/null 2>&1
   sdkmanager --install "${MISSING_PACKAGES[@]}" >/dev/null \
@@ -213,12 +215,18 @@ until emulator_running; do
   fi
 done
 
+# Polled from the host rather than with `timeout`, which stock macOS does not
+# ship, and with the loop outside adb so a dropped shell cannot wedge the wait.
 log "waiting for sys.boot_completed ..."
-if ! timeout "${BOOT_TIMEOUT}" adb -s "${SERIAL}" shell \
-  'while [[ -z $(getprop sys.boot_completed) ]]; do sleep 2; done' >/dev/null 2>&1; then
-  warn "boot did not complete within ${BOOT_TIMEOUT}s; see ${LOG_FILE}"
-  exit 1
-fi
+waited=0
+until [[ "$(adb -s "${SERIAL}" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" == "1" ]]; do
+  sleep 2
+  waited=$((waited + 2))
+  if (( waited >= BOOT_TIMEOUT )); then
+    warn "boot did not complete within ${BOOT_TIMEOUT}s; see ${LOG_FILE}"
+    exit 1
+  fi
+done
 
 log "booted: ${SERIAL} (android $(adb -s "${SERIAL}" shell getprop ro.build.version.release | tr -d '\r'))"
 log "next   : scripts/install_system_ca.sh --udid ${SERIAL}"
