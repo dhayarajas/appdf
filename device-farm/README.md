@@ -161,6 +161,23 @@ DEVICE_FARM_DRY_RUN=1 ./run_e2e_farm.sh
 python scripts/validate_run.py --run-id <test_run_id>
 ```
 
+### Testing locally without a device
+
+`make smoke` (`scripts/local_smoke_test.sh`) is the one-command local check: it
+creates `.venv` if needed, then verifies imports, `pytest --collect-only`, shell
+syntax, the plugin JSON, preflight, dry-run and zero-device orchestration,
+artifact validation, malformed-env handling, and the mitmdump/HAR pipeline
+against real HTTP traffic. Missing adb/Appium/tcpdump and absent devices are
+reported, never fatal; generated artifacts are removed unless `--keep` is
+passed. It exits non-zero only if a check genuinely fails.
+
+```bash
+./scripts/local_smoke_test.sh            # full check, cleans up after itself
+./scripts/local_smoke_test.sh --keep     # keep the artifacts it produced
+./scripts/local_smoke_test.sh --no-venv  # use the active interpreter instead of .venv
+python scripts/smoke_proxy_probe.py      # just the proxy/HAR probe
+```
+
 ### Launching Appium with the device-farm plugin
 
 ```bash

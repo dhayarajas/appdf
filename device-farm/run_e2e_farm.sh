@@ -64,6 +64,11 @@ if ! [[ "${MAX_PARALLEL}" =~ ^[0-9]+$ ]]; then
   MAX_PARALLEL=4
 fi
 
+if ! [[ "${APPIUM_STARTUP_TIMEOUT}" =~ ^[0-9]+$ ]]; then
+  warn "DEVICE_FARM_APPIUM_STARTUP_TIMEOUT='${APPIUM_STARTUP_TIMEOUT}' is not a non-negative integer; using 60"
+  APPIUM_STARTUP_TIMEOUT=60
+fi
+
 if ! mkdir -p "${RUN_DIR}/reports" "${RUN_DIR}/logs" "${RUN_DIR}/traces" 2>/dev/null; then
   warn "cannot create the artifact tree at ${RUN_DIR} (check DEVICE_FARM_ARTIFACTS_ROOT permissions)"
   exit 1

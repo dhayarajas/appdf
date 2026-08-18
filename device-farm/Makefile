@@ -9,7 +9,7 @@ ARTIFACTS_ROOT ?= $(FARM_DIR)/artifacts
 PYTEST_ARGS ?=
 
 .DEFAULT_GOAL := help
-.PHONY: help provision preflight install test collect validate clean
+.PHONY: help provision preflight install test smoke collect validate clean
 
 help: ## Show available targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -29,6 +29,9 @@ install: ## Create .venv and install Python dependencies
 
 test: ## Phase 4: orchestrated E2E run (Appium + pytest + traces)
 	bash $(FARM_DIR)/run_e2e_farm.sh $(PYTEST_ARGS)
+
+smoke: ## Hardware-free end-to-end self-check of the scaffold
+	bash $(FARM_DIR)/scripts/local_smoke_test.sh
 
 collect: ## Hardware-free check: collect tests only
 	cd $(FARM_DIR) && $(PYTHON) -m pytest --collect-only -q
