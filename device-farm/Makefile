@@ -31,7 +31,7 @@ install: ## Create .venv and install Python dependencies
 test: ## Phase 4: orchestrated E2E run (Appium + pytest + traces)
 	bash $(FARM_DIR)/run_e2e_farm.sh $(PYTEST_ARGS)
 
-emulator: ## Boot a headless root-capable Android emulator (needs KVM)
+emulator: ## Boot a headless root-capable Android emulator (KVM on Linux, Hypervisor.framework on macOS)
 	bash $(FARM_DIR)/scripts/emulator_up.sh
 
 emulator-down: ## Shut the emulator down

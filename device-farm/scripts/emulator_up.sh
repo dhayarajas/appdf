@@ -67,6 +67,7 @@ export PATH="${SDK_ROOT}/platform-tools:${SDK_ROOT}/emulator:${SDK_ROOT}/cmdline
 
 # Acceleration state, normalised across hosts:
 #   ready     - accelerated, nothing to launch through a helper group (macOS)
+#   degraded  - macOS reports an accelerator problem; advisory only
 #   writable  - /dev/kvm usable by this process
 #   needs-sg  - kvm group membership exists but is not active in this process
 #   absent    - no accelerator on this host
@@ -74,16 +75,12 @@ export PATH="${SDK_ROOT}/platform-tools:${SDK_ROOT}/emulator:${SDK_ROOT}/cmdline
 accel_state() {
   if [[ "${HOST_OS}" == "Darwin" ]]; then
     # macOS emulators use Apple Hypervisor.framework, which needs no user setup.
-    # -accel-check is authoritative when the emulator package is installed.
+    # -accel-check is advisory when the emulator package is installed.
     local accel_check="${SDK_ROOT}/emulator/emulator"
-    if [[ -x "${accel_check}" ]]; then
-      if "${accel_check}" -accel-check >/dev/null 2>&1; then
-        printf 'ready'
-      else
-        printf 'unwritable'
-      fi
+    if [[ -x "${accel_check}" ]] && ! "${accel_check}" -accel-check >/dev/null 2>&1; then
+      printf 'degraded'
     else
-      printf 'writable'
+      printf 'ready'
     fi
     return
   fi
@@ -141,7 +138,12 @@ log "sdk root : ${SDK_ROOT}"
 log "host     : ${HOST_OS}/${HOST_ARCH}"
 log "avd      : ${AVD_NAME} (api ${AVD_API}, ${AVD_TAG}/${AVD_ABI})"
 log "accel    : ${ACCEL_LABEL} ${ACCEL}"
-[[ "${ACCEL}" == "absent" || "${ACCEL}" == "unwritable" ]] && MISSING=1
+if [[ "${HOST_OS}" == "Darwin" ]]; then
+  [[ "${ACCEL}" == "degraded" ]] \
+    && warn "emulator -accel-check reported a problem; boot may be slow. Update the SDK emulator package (sdkmanager --install emulator) and confirm macOS 12+"
+elif [[ "${ACCEL}" == "absent" || "${ACCEL}" == "unwritable" ]]; then
+  MISSING=1
+fi
 
 if [[ "${MODE}" == "check" ]]; then
   if emulator_running; then
@@ -150,11 +152,7 @@ if [[ "${MODE}" == "check" ]]; then
   fi
   [[ "${MISSING}" -eq 0 ]] && { log "status   : ready to boot"; exit 0; }
   warn "not ready: address the items above"
-  if [[ "${HOST_OS}" == "Darwin" ]]; then
-    case "${ACCEL}" in
-      unwritable) warn "emulator -accel-check failed; update the SDK emulator package (sdkmanager --install emulator) and confirm macOS 12+" ;;
-    esac
-  else
+  if [[ "${HOST_OS}" != "Darwin" ]]; then
     case "${ACCEL}" in
       absent) warn "this host has no /dev/kvm; an emulator cannot be booted here" ;;
       unwritable) warn "grant KVM access: sudo usermod -aG kvm \$USER && sudo chmod 660 /dev/kvm" ;;

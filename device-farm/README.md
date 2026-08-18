@@ -257,7 +257,8 @@ across 3 hosts.
 macOS has no `/dev/kvm`: the Android emulator uses Apple's
 Hypervisor.framework, which needs no user setup beyond a recent `emulator`
 package, so `./scripts/emulator_up.sh --check` reports `ready to boot` once the
-SDK and AVD are in place. Recommended environment:
+SDK and AVD are in place. A failing `emulator -accel-check` is reported as a
+warning, never as a blocked preflight. Recommended environment:
 
 ```bash
 export ANDROID_HOME="$HOME/Library/Android/sdk"   # Android Studio default, also the script's fallback
