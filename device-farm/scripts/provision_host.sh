@@ -225,6 +225,41 @@ check_env() {
 }
 
 # ------------------------------------------------------ Appium 2.x + drivers
+# Current uiautomator2 / xcuitest / device-farm releases require an Appium 3.x
+# server and refuse to install on 2.x, so a compatible version is pinned when
+# the installed server reports major 2.
+extension_spec() {
+  local package="$1" major
+  major="$(appium --version 2>/dev/null)"
+  major="${major%%.*}"
+  if [[ "${major}" == "2" ]]; then
+    case "${package}" in
+      appium-uiautomator2-driver)
+        printf '%s' "${UIAUTOMATOR2_SPEC:-appium-uiautomator2-driver@4.2.9}"
+        return ;;
+      appium-xcuitest-driver)
+        printf '%s' "${XCUITEST_SPEC:-appium-xcuitest-driver@7.26.4}"
+        return ;;
+      appium-device-farm)
+        printf '%s' "${DEVICE_FARM_PLUGIN_SPEC:-appium-device-farm@9.8.8}"
+        return ;;
+    esac
+  fi
+  printf '%s' "${package}"
+}
+
+install_extension() {
+  # install_extension <driver|plugin> <npm-spec> <extension-name>
+  local kind="$1" spec="$2" name="$3"
+  log "  appium ${kind} install --source=npm ${spec}"
+  if appium "${kind}" install --source=npm "${spec}"; then
+    ok "${kind} ${name} installed (${spec})"
+    return 0
+  fi
+  hint "on a version conflict, pin a compatible release, e.g. UIAUTOMATOR2_SPEC=appium-uiautomator2-driver@<version>"
+  return 1
+}
+
 check_appium() {
   log "Appium 2.x ..."
   if ! have appium; then
@@ -263,8 +298,8 @@ check_appium() {
     warn "driver uiautomator2 not installed (appium driver install uiautomator2)"
   else
     log "installing driver uiautomator2 ..."
-    appium driver install uiautomator2 && ok "driver uiautomator2 installed" \
-      || warn "appium driver install uiautomator2 failed; re-run manually"
+    install_extension driver "$(extension_spec appium-uiautomator2-driver)" uiautomator2 \
+      || warn "driver uiautomator2 install failed; re-run manually"
   fi
 
   if [[ ${IS_DARWIN} -eq 1 ]]; then
@@ -274,8 +309,8 @@ check_appium() {
       warn "driver xcuitest not installed (appium driver install xcuitest)"
     else
       log "installing driver xcuitest (Darwin host) ..."
-      appium driver install xcuitest && ok "driver xcuitest installed" \
-        || warn "appium driver install xcuitest failed; Xcode + command line tools are required"
+      install_extension driver "$(extension_spec appium-xcuitest-driver)" xcuitest \
+        || warn "driver xcuitest install failed; Xcode + command line tools are required"
     fi
   else
     log "  skipping xcuitest driver: host is ${OS_NAME}, not Darwin"
@@ -287,8 +322,8 @@ check_appium() {
     warn "plugin device-farm not installed (appium plugin install --source=npm appium-device-farm)"
   else
     log "installing plugin appium-device-farm ..."
-    appium plugin install --source=npm appium-device-farm && ok "plugin device-farm installed" \
-      || warn "appium plugin install --source=npm appium-device-farm failed; re-run manually"
+    install_extension plugin "$(extension_spec appium-device-farm)" device-farm \
+      || warn "plugin device-farm install failed; re-run manually"
   fi
 }
 

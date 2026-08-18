@@ -182,10 +182,11 @@ python scripts/smoke_proxy_probe.py      # just the proxy/HAR probe
 
 ```bash
 npm i -g appium
-appium plugin install --source=npm appium-device-farm
-appium driver install uiautomator2
+# Latest extension releases require an Appium 3.x server; pin these on Appium 2.x.
+appium plugin install --source=npm appium-device-farm@9.8.8
+appium driver install --source=npm appium-uiautomator2-driver@4.2.9
 # macOS only:
-appium driver install xcuitest
+appium driver install --source=npm appium-xcuitest-driver@7.26.4
 
 appium server \
   --use-plugins=device-farm \
@@ -194,6 +195,10 @@ appium server \
   --port 4723 \
   --allow-cors
 ```
+
+`scripts/provision_host.sh` applies the same pins automatically when
+`appium --version` reports 2.x; override them with `UIAUTOMATOR2_SPEC`,
+`XCUITEST_SPEC` or `DEVICE_FARM_PLUGIN_SPEC`.
 
 The plugin dashboard is served at `http://<host>:4723/device-farm/`. Point tests
 at `http://<host>:4723/wd/hub` (or `/` for Appium 2 defaults) and the plugin

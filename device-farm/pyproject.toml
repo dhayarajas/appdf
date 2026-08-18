@@ -3,9 +3,9 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "soccom-device-farm"
+name = "appdf-device-farm"
 version = "0.1.0"
-description = "Self-hosted mobile device farm and Appium/Pytest E2E scaffold for soccom"
+description = "Self-hosted mobile device farm and Appium/Pytest E2E scaffold"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
