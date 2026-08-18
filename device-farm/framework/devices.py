@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import shutil
 import socket
 import subprocess
@@ -20,6 +21,8 @@ from pathlib import Path
 LOGGER = logging.getLogger(__name__)
 
 ADB_TIMEOUT_SEC = 30
+# QEMU maps this alias to the host's loopback interface for every AVD.
+EMULATOR_HOST_ALIAS = "10.0.2.2"
 
 
 class AdbUnavailableError(RuntimeError):
@@ -149,9 +152,14 @@ def device_count() -> int:
 def detect_host_ip(target: str = "8.8.8.8") -> str:
     """Best-effort LAN IP of this host, as seen by devices on the same network.
 
-    Falls back to ``127.0.0.1`` when there is no route (offline CI), which is
-    still usable for emulators via ``10.0.2.2`` style host aliases.
+    ``DEVICE_FARM_HOST_IP`` wins when set, which is how hosts with several
+    interfaces (VPN, docker bridges) pick the one a phone can reach. Falls back
+    to ``127.0.0.1`` when there is no route (offline CI), which is still usable
+    for emulators via ``10.0.2.2`` style host aliases.
     """
+    override = os.environ.get("DEVICE_FARM_HOST_IP")
+    if override:
+        return override
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
         sock.connect((target, 80))
@@ -161,6 +169,37 @@ def detect_host_ip(target: str = "8.8.8.8") -> str:
         return "127.0.0.1"
     finally:
         sock.close()
+
+
+def is_emulator(udid: str | None = None) -> bool:
+    """True when the target is an Android emulator (QEMU/AVD), False otherwise.
+
+    Checked by serial prefix first (``emulator-5554``) and then by
+    ``ro.kernel.qemu`` / ``ro.boot.qemu``, so it also works for emulators
+    reached over TCP with a non-standard serial.
+    """
+    if udid and udid.startswith("emulator-"):
+        return True
+    if not adb_available():
+        return False
+    target = udid
+    if target is None:
+        ready = list_devices()
+        if len(ready) != 1:
+            return False
+        target = ready[0].udid
+        if target.startswith("emulator-"):
+            return True
+    return any(getprop(target, prop) == "1" for prop in ("ro.kernel.qemu", "ro.boot.qemu"))
+
+
+def proxy_host_for_device(host_ip: str, udid: str | None = None) -> str:
+    """Address the *device* should use to reach a proxy running on this host.
+
+    Android emulators reach the host through the fixed QEMU alias
+    ``10.0.2.2`` (the host loopback); physical devices need the host's LAN IP.
+    """
+    return EMULATOR_HOST_ALIAS if is_emulator(udid) else host_ip
 
 
 def install_app(app_path: str | Path, *, udid: str | None = None, reinstall: bool = True) -> bool:

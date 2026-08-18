@@ -34,7 +34,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from framework.devices import adb_available, detect_host_ip, run_adb
+from framework.devices import adb_available, detect_host_ip, proxy_host_for_device, run_adb
 
 LOGGER = logging.getLogger(__name__)
 
@@ -79,6 +79,8 @@ class ProxySession:
     device_proxy_applied: bool = False
     udid: str | None = None
     reason: str | None = None
+    #: endpoint as configured *on the device* (``10.0.2.2:<port>`` for emulators)
+    device_endpoint: str | None = None
     _extra_paths: list[Path] = field(default_factory=list)
 
     @property
@@ -208,6 +210,9 @@ class ProxyManager:
         Returns ``False`` (logging a warning) when adb or the device is absent,
         or when the proxy is not running.
 
+        The address written to the device is host-aware: emulators get the QEMU
+        host alias ``10.0.2.2``, physical devices get this host's LAN IP.
+
         Note: the global ``http_proxy`` setting affects Wi-Fi traffic for most
         apps; apps using their own HTTP stack with hardcoded proxy bypass, or
         traffic over mobile data, may ignore it.
@@ -220,13 +225,12 @@ class ProxyManager:
             LOGGER.warning("adb unavailable; cannot set the device proxy")
             return False
 
-        result = run_adb(
-            ["shell", "settings", "put", "global", "http_proxy", session.endpoint], udid=udid
-        )
+        endpoint = f"{proxy_host_for_device(session.host_ip, udid)}:{session.port}"
+        result = run_adb(["shell", "settings", "put", "global", "http_proxy", endpoint], udid=udid)
         if result.returncode != 0:
             LOGGER.warning(
                 "failed to set device proxy to %s (rc=%s): %s",
-                session.endpoint,
+                endpoint,
                 result.returncode,
                 (result.stderr or "").strip(),
             )
@@ -234,7 +238,8 @@ class ProxyManager:
 
         session.device_proxy_applied = True
         session.udid = udid
-        LOGGER.info("device proxy set to %s", session.endpoint)
+        session.device_endpoint = endpoint
+        LOGGER.info("device proxy set to %s", endpoint)
         return True
 
     def clear_device_proxy(self, udid: str | None = None) -> bool:

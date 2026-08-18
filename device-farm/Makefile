@@ -9,7 +9,8 @@ ARTIFACTS_ROOT ?= $(FARM_DIR)/artifacts
 PYTEST_ARGS ?=
 
 .DEFAULT_GOAL := help
-.PHONY: help provision preflight install test smoke collect validate clean
+.PHONY: help provision preflight install test smoke har emulator emulator-down install-ca \
+	collect validate clean
 
 help: ## Show available targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -29,6 +30,19 @@ install: ## Create .venv and install Python dependencies
 
 test: ## Phase 4: orchestrated E2E run (Appium + pytest + traces)
 	bash $(FARM_DIR)/run_e2e_farm.sh $(PYTEST_ARGS)
+
+emulator: ## Boot a headless root-capable Android emulator (needs KVM)
+	bash $(FARM_DIR)/scripts/emulator_up.sh
+
+emulator-down: ## Shut the emulator down
+	bash $(FARM_DIR)/scripts/emulator_up.sh --stop
+
+install-ca: ## Install the mitmproxy CA into the device system trust store (rooted only)
+	bash $(FARM_DIR)/scripts/install_system_ca.sh
+
+har: ## Install the app under test, drive it, and assert on the exported HAR
+	cd $(FARM_DIR) && DEVICE_FARM_ENABLE_PROXY=1 DEVICE_FARM_ENABLE_DEVICE_PROXY=1 \
+		$(PYTHON) -m pytest tests/test_app_traffic_har.py $(PYTEST_ARGS)
 
 smoke: ## Hardware-free end-to-end self-check of the scaffold
 	bash $(FARM_DIR)/scripts/local_smoke_test.sh

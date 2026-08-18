@@ -199,6 +199,99 @@ The plugin dashboard is served at `http://<host>:4723/device-farm/`. Point tests
 at `http://<host>:4723/wd/hub` (or `/` for Appium 2 defaults) and the plugin
 allocates a free device from the pool per session.
 
+## App install + HAR capture (the end-to-end flow)
+
+This is the flow that installs a real app, drives it through Appium, and exports
+its network traffic as a HAR. It runs on a local Android emulator (no physical
+hardware needed) and identically on a physical device.
+
+```mermaid
+sequenceDiagram
+    participant Dev as run_e2e_farm.sh / pytest
+    participant Emu as scripts/emulator_up.sh
+    participant CA as scripts/install_system_ca.sh
+    participant Proxy as proxy_manager (mitmdump)
+    participant Appium as Appium + uiautomator2
+    participant Device as Android device / AVD
+    participant App as App under test
+    participant Art as artifacts/run_id/traces
+
+    Emu->>Device: boot AVD (-writable-system), wait sys.boot_completed
+    CA->>Device: push mitmproxy CA into the system trust store
+    Dev->>Proxy: start mitmdump on a free port, HAR path per test
+    Dev->>Device: adb settings put global http_proxy 10.0.2.2:port
+    Dev->>Appium: create session with app + UiAutomator2 caps
+    Appium->>Device: install .apk, launch activity
+    App->>Proxy: HTTPS requests (CA trusted, so decrypted)
+    Proxy->>App: upstream responses
+    Dev->>Proxy: stop -> mitmdump flushes the HAR
+    Proxy->>Art: <test-id>-<timestamp>.har
+    Dev->>Device: clear proxy, uninstall, collect logcat
+```
+
+### Android emulator (no hardware)
+
+```bash
+./scripts/emulator_up.sh --check          # KVM, SDK, AVD readiness (never boots)
+make emulator                             # boot headless AVD, wait for boot_completed
+make install-ca                           # mitmproxy CA -> system store (rooted AVD only)
+
+DEVICE_FARM_ENABLE_PROXY=1 \
+DEVICE_FARM_ENABLE_DEVICE_PROXY=1 \
+DEVICE_FARM_APP_PATH=/path/to/app.apk \
+DEVICE_FARM_APP_PACKAGE=com.example.app \
+DEVICE_FARM_APP_ACTIVITY=.MainActivity \
+  make har                                # install, drive, assert on the exported HAR
+
+make emulator-down
+```
+
+`tests/test_app_traffic_har.py` asserts that the HAR exists, has entries, and
+that HTTPS entries were actually decrypted — every assertion message names the
+likely cause (proxy not applied, CA not trusted, pinned app). Verified on this
+scaffold with an Android 14 AOSP AVD and F-Droid: 6 decrypted HTTPS entries
+across 3 hosts.
+
+### Physical Android device
+
+1. Enable Developer options → USB debugging, connect USB, accept the RSA prompt;
+   confirm with `adb devices` (see `docs/udev-rules.md` for Linux udev rules).
+2. Put host and phone on the same network. The device cannot use `10.0.2.2`, so
+   `proxy_host_for_device()` sends it the host's LAN IP automatically; override
+   with `DEVICE_FARM_HOST_IP` if the host has several interfaces.
+3. Trust the CA. On a non-rooted phone the mitmproxy CA can only be installed as
+   a *user* certificate (Settings → Security → Encryption & credentials → Install
+   a certificate → CA certificate, from `http://mitm.it`). Android 7+ apps ignore
+   user CAs unless the app opts in via `network_security_config`, so a non-rooted
+   phone yields decrypted HTTPS only for apps you build with that opt-in.
+   `scripts/install_system_ca.sh` refuses to run on a device without root rather
+   than pretending the CA is trusted.
+4. Run the same command as above; the fixtures are identical.
+
+### iOS
+
+iOS requires a macOS host with Xcode and the `xcuitest` driver
+(`provision_host.sh` installs it only when `uname` reports Darwin), so it cannot
+run on this Linux host. On macOS the flow is the same except: set
+`DEVICE_FARM_PLATFORM=iOS` and `DEVICE_FARM_APP_PATH=<app>.app|.ipa`; there is no
+`adb`, so the proxy is set in Settings → Wi-Fi → Configure Proxy (or in the
+simulator, the host's system proxy), and the CA is trusted under Settings →
+General → About → Certificate Trust Settings. Everything else — HAR/PCAP
+naming, artifacts, fixtures — is shared.
+
+### Pinned vs unpinned apps
+
+| App | Result |
+| --- | --- |
+| No pinning, CA in the system store | Full HAR with headers and bodies |
+| No pinning, CA only as a user cert | Decrypted only for apps opting in via `network_security_config` |
+| Certificate pinning | Handshake fails: no HAR entry or `status == 0`. `HarEntry.decrypted` stays `False`, so a pinned app can never be misread as decrypted |
+
+For a pinned app you own: add a debug-only `network_security_config` trusting
+user CAs, or test a debuggable build. Otherwise capture PCAP
+(`DEVICE_FARM_ENABLE_PCAP=1`) for connection-level evidence — endpoints and
+timing, no plaintext.
+
 ## Configuration
 
 All settings are environment variables (see `framework/config.py`):
@@ -216,6 +309,9 @@ All settings are environment variables (see `framework/config.py`):
 | `DEVICE_FARM_ENABLE_DEVICE_PROXY` | `0` | Apply proxy settings on the device via adb |
 | `DEVICE_FARM_CAPTURE_INTERFACE` | `any` | tcpdump interface |
 | `DEVICE_FARM_MAX_PARALLEL` | `4` | Upper bound for pytest-xdist workers |
+| `DEVICE_FARM_HOST_IP` | auto-detected | Host address a physical device should reach the proxy on |
+| `DEVICE_FARM_AVD_NAME` | `farm34` | AVD used by `scripts/emulator_up.sh` |
+| `DEVICE_FARM_AVD_API` | `34` | Emulator API level (also selects build-tools) |
 
 ## Troubleshooting
 
@@ -229,3 +325,14 @@ All settings are environment variables (see `framework/config.py`):
   `sudo setcap cap_net_raw,cap_net_admin=eip $(command -v tcpdump)`; otherwise
   leave `DEVICE_FARM_ENABLE_PCAP=0`.
 - **Appium port in use** — override with `DEVICE_FARM_APPIUM_PORT`.
+- **`Cannot verify the signature of <app>.apk` / `apksigner.jar` not found** —
+  install Android build-tools (`sdkmanager "build-tools;34.0.0"`);
+  `scripts/emulator_up.sh` installs them for you.
+- **`Could not find a driver for automationName 'UiAutomator2'` with a
+  `p-limit` ESM error** — a broken dependency combination in the installed
+  Appium/uiautomator2 pair, not a config problem. Reinstall the driver
+  (`appium driver uninstall uiautomator2 && appium driver install uiautomator2`)
+  and, if it persists, pin a driver release known to work with your Appium
+  version. The fixtures surface the server error verbatim and skip.
+- **System CA disappears after an emulator reboot** — the Conscrypt bind mount
+  is not persistent; re-run `scripts/install_system_ca.sh`.
