@@ -46,13 +46,8 @@ Appium-side concurrency, while the pytest-xdist worker count remains
 `min(discovered devices, DEVICE_FARM_MAX_PARALLEL)`. Dashboard support is enabled
 with the plugin's default `/device-farm` path.
 
-The previous draft also used unsupported `android-device-type`,
-`ios-device-type`, `derived-data-path`, `skip-chrome-download`,
-`device-availability-timeout-ms`, `device-retry-interval-ms`, `max-sessions`,
-`remote-connection-timeout-ms`, `bind-hostport`, `sendNodeDevicesToHub`, `pool`,
-`parallel`, `allocation`, `healthChecks`, and `dashboard` keys, plus null-valued
-`hub` and `cloud` options. The valid camelCase equivalents are retained where
-the schema provides them; the remaining options are intentionally omitted.
+Appium validates this file against the plugin schema before the server starts, so
+an unknown key or a null-valued option aborts startup rather than being ignored.
 
 On macOS, after installing Xcode and the Appium `xcuitest` driver, change the
 `server.plugin.device-farm.platform` to `"ios"` for iOS-only discovery or
