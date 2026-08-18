@@ -41,6 +41,7 @@ WORKERS=1
 PYTEST_RC=0
 APPIUM_STARTED=0
 PYTEST_RAN=0
+RUN_FAILURE_REASON=""
 
 log()  { printf '[e2e] %s\n' "$*"; }
 warn() { printf '[e2e] WARN: %s\n' "$*" >&2; }
@@ -108,6 +109,9 @@ summary() {
   printf '[e2e] devices found : %s\n' "${DEVICE_COUNT}"
   printf '[e2e] xdist workers : %s\n' "${WORKERS}"
   printf '[e2e] appium server : %s\n' "$([[ ${APPIUM_STARTED} -eq 1 ]] && echo "started (${APPIUM_URL})" || echo 'not started')"
+  if [[ -n "${RUN_FAILURE_REASON}" ]]; then
+    printf '[e2e] failure      : %s\n' "${RUN_FAILURE_REASON}"
+  fi
   printf '[e2e] artifacts     : reports=%s logs=%s traces=%s\n' "${reports}" "${logs}" "${traces}"
   if [[ "${PYTEST_RAN}" -eq 1 ]]; then
     printf '[e2e] pytest exit   : %s\n' "${PYTEST_RC}"
@@ -189,9 +193,10 @@ start_appium() {
   local waited=0
   while (( waited < APPIUM_STARTUP_TIMEOUT )); do
     if ! kill -0 "${APPIUM_PID}" 2>/dev/null; then
-      warn "Appium exited during startup; see ${APPIUM_LOG}"
+      RUN_FAILURE_REASON="Appium exited during startup; see ${APPIUM_LOG}"
+      warn "FATAL: ${RUN_FAILURE_REASON}"
       APPIUM_PID=""
-      return 0
+      return 1
     fi
     if curl -fsS --max-time 3 "${APPIUM_URL}/status" >/dev/null 2>&1; then
       log "Appium is up at ${APPIUM_URL} (pid ${APPIUM_PID})"
@@ -201,10 +206,13 @@ start_appium() {
     sleep 2
     waited=$(( waited + 2 ))
   done
-  warn "Appium did not become ready within ${APPIUM_STARTUP_TIMEOUT}s; see ${APPIUM_LOG}"
-  return 0
+  RUN_FAILURE_REASON="Appium did not become ready within ${APPIUM_STARTUP_TIMEOUT}s; see ${APPIUM_LOG}"
+  warn "FATAL: ${RUN_FAILURE_REASON}"
+  return 1
 }
-start_appium
+if ! start_appium; then
+  exit 1
+fi
 
 # ---------------------------------------------------------------- run pytest
 PYTEST_ARGS=(

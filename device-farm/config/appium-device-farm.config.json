@@ -1,14 +1,4 @@
 {
-  "$comment": [
-    "Configuration for the appium-device-farm plugin (Appium 2.x).",
-    "Launch with:",
-    "  appium server --use-plugins=device-farm --config device-farm/config/appium-device-farm.config.json",
-    "The 'server' block mirrors Appium's --config schema; 'plugin.device-farm' holds",
-    "the plugin-specific device pooling / allocation / health-check settings.",
-    "Keys unknown to a given plugin version are ignored, so this file is safe to",
-    "carry across plugin upgrades; see docs at",
-    "https://github.com/AppiumTestDistribution/appium-device-farm"
-  ],
   "server": {
     "port": 4723,
     "address": "0.0.0.0",
@@ -18,85 +8,20 @@
     "relaxed-security": true,
     "log-level": "info",
     "log-timestamp": true,
-    "use-drivers": ["uiautomator2", "xcuitest"],
     "use-plugins": ["device-farm"],
     "plugin": {
       "device-farm": {
-        "platform": "both",
-        "android-device-type": "both",
-        "ios-device-type": "both",
-        "hub": null,
-        "derived-data-path": null,
-        "skip-chrome-download": true,
-        "device-availability-timeout-ms": 180000,
-        "device-retry-interval-ms": 5000,
-        "max-sessions": 4,
-        "remote-connection-timeout-ms": 60000,
-        "bind-hostport": "0.0.0.0:4723",
-        "cloud": null,
-        "sendNodeDevicesToHub": false,
-
-        "$devicePooling": [
-          "Devices are discovered dynamically via adb / xcdevice. Entries in",
-          "'include' / 'exclude' let a host contribute only part of its attached",
-          "hardware to the pool; leave 'include' empty to pool everything found."
-        ],
-        "pool": {
-          "include": [],
-          "exclude": [],
-          "reserve": [],
-          "emulators": {
-            "enabled": true,
-            "max-concurrent": 2,
-            "avd-names": []
-          },
-          "simulators": {
-            "enabled": false,
-            "max-concurrent": 2
-          },
-          "min-android-api-level": 28
-        },
-
-        "$parallelSessions": [
-          "max-sessions bounds Appium-side concurrency; the pytest-xdist worker",
-          "count in run_e2e_farm.sh is min(discovered devices, DEVICE_FARM_MAX_PARALLEL)."
-        ],
-        "parallel": {
-          "max-sessions": 4,
-          "max-sessions-per-device": 1,
-          "queue-timeout-ms": 300000,
-          "new-command-timeout-sec": 120
-        },
-
-        "allocation": {
-          "strategy": "least-recently-used",
-          "sticky-by-test-worker": false,
-          "block-on-unavailable": true,
-          "allocation-timeout-ms": 180000,
-          "release-on-session-end": true,
-          "cleanup-between-sessions": true
-        },
-
-        "healthChecks": {
-          "enabled": true,
-          "interval-ms": 60000,
-          "adb-state-check": true,
-          "battery": {
-            "enabled": true,
-            "min-level-percent": 20,
-            "max-temperature-celsius": 45
-          },
-          "screen-unlock-check": true,
-          "reboot-unhealthy-devices": false,
-          "quarantine-after-consecutive-failures": 3,
-          "quarantine-duration-ms": 900000
-        },
-
-        "dashboard": {
-          "enabled": true,
-          "path": "/device-farm",
-          "$note": "Served at http://<host>:4723/device-farm/"
-        }
+        "platform": "android",
+        "androidDeviceType": "both",
+        "iosDeviceType": "both",
+        "skipChromeDownload": true,
+        "deviceAvailabilityTimeoutMs": 180000,
+        "deviceAvailabilityQueryIntervalMs": 5000,
+        "maxSessions": 4,
+        "remoteConnectionTimeout": 60000,
+        "newCommandTimeoutSec": 120,
+        "bindHostOrIp": "0.0.0.0",
+        "enableDashboard": true
       }
     }
   }

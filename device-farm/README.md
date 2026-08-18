@@ -28,10 +28,36 @@ otherwise prints copy-pasteable install guidance. It then verifies `adb`,
 drivers (`uiautomator2` always; `xcuitest` only when `uname` reports `Darwin`).
 A missing/absent device is reported as a warning, never a hard failure.
 
-Device pooling, parallel session limits, allocation strategy and health checks
-live in `config/appium-device-farm.config.json`, consumed by the
+Plugin platform selection, session limits, and dashboard enablement live in
+`config/appium-device-farm.config.json`, consumed by the
 [`appium-device-farm`](https://github.com/AppiumTestDistribution/appium-device-farm)
 plugin.
+
+The checked-in configuration defaults to Android with `"platform": "android"`.
+Driver selection belongs to the launcher rather than this file:
+`run_e2e_farm.sh` passes `--use-drivers=uiautomator2` explicitly. This keeps the
+configuration from silently removing iOS support on macOS hosts.
+
+The checked-in plugin configuration contains only keys accepted by the installed
+plugin schema. Devices are discovered dynamically through `adb` / `xcdevice`;
+the plugin's include/exclude pool controls, allocation strategy, and health-check
+settings are not schema-supported configuration options. `maxSessions` bounds
+Appium-side concurrency, while the pytest-xdist worker count remains
+`min(discovered devices, DEVICE_FARM_MAX_PARALLEL)`. Dashboard support is enabled
+with the plugin's default `/device-farm` path.
+
+Appium validates this file against the plugin schema before the server starts, so
+an unknown key or a null-valued option aborts startup rather than being ignored.
+
+On macOS, after installing Xcode and the Appium `xcuitest` driver, change the
+`server.plugin.device-farm.platform` to `"ios"` for iOS-only discovery or
+`"both"` for Android and iOS discovery. The installed plugin also exposes these
+settings as `--plugin-device-farm-platform=ios` and
+`--plugin-device-farm-platform=both`. Its schema has no environment-variable
+mapping; the only platform-independent plugin environment variable found in
+the installed runtime is `DEVICE_FARM_HOME`, which controls metadata storage.
+Driver selection is still owned by the launcher, so an iOS or combined run must
+select `xcuitest` there alongside `uiautomator2`.
 
 ### Phase 2 — Network interception / trace pipeline
 
