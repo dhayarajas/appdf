@@ -30,6 +30,7 @@ import shutil
 import signal
 import socket
 import subprocess
+import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -62,8 +63,22 @@ def allocate_port(preferred: int | None = None) -> int:
         return int(sock.getsockname()[1])
 
 
+def mitmdump_path() -> str | None:
+    """Locate ``mitmdump``, or return ``None`` when mitmproxy is not installed.
+
+    mitmproxy is a dependency of this package, so it usually sits next to the
+    running interpreter (``device-farm/.venv/bin``). That directory is checked
+    before ``PATH`` so HAR capture works without activating the virtualenv.
+    """
+    bindir = Path(sys.executable).parent
+    for candidate in (bindir / "mitmdump", bindir / "mitmdump.exe"):
+        if candidate.is_file():
+            return str(candidate)
+    return shutil.which("mitmdump")
+
+
 def mitmdump_available() -> bool:
-    return shutil.which("mitmdump") is not None
+    return mitmdump_path() is not None
 
 
 @dataclass
@@ -365,7 +380,7 @@ class ProxyManager:
         self, port: int, *, har_output: bool, flows_path: Path | None = None
     ) -> list[str]:
         cmd = [
-            "mitmdump",
+            mitmdump_path() or "mitmdump",
             "--listen-host",
             "0.0.0.0",
             "--listen-port",
