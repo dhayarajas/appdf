@@ -8,11 +8,10 @@
     "relaxed-security": true,
     "log-level": "info",
     "log-timestamp": true,
-    "use-drivers": ["uiautomator2"],
     "use-plugins": ["device-farm"],
     "plugin": {
       "device-farm": {
-        "platform": "both",
+        "platform": "android",
         "androidDeviceType": "both",
         "iosDeviceType": "both",
         "skipChromeDownload": true,

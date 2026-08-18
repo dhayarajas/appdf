@@ -33,6 +33,11 @@ Plugin platform selection, session limits, and dashboard enablement live in
 [`appium-device-farm`](https://github.com/AppiumTestDistribution/appium-device-farm)
 plugin.
 
+The checked-in configuration defaults to Android with `"platform": "android"`.
+Driver selection belongs to the launcher rather than this file:
+`run_e2e_farm.sh` passes `--use-drivers=uiautomator2` explicitly. This keeps the
+configuration from silently removing iOS support on macOS hosts.
+
 The checked-in plugin configuration contains only keys accepted by the installed
 plugin schema. Devices are discovered dynamically through `adb` / `xcdevice`;
 the plugin's include/exclude pool controls, allocation strategy, and health-check
@@ -48,6 +53,16 @@ The previous draft also used unsupported `android-device-type`,
 `parallel`, `allocation`, `healthChecks`, and `dashboard` keys, plus null-valued
 `hub` and `cloud` options. The valid camelCase equivalents are retained where
 the schema provides them; the remaining options are intentionally omitted.
+
+On macOS, after installing Xcode and the Appium `xcuitest` driver, change the
+`server.plugin.device-farm.platform` to `"ios"` for iOS-only discovery or
+`"both"` for Android and iOS discovery. The installed plugin also exposes these
+settings as `--plugin-device-farm-platform=ios` and
+`--plugin-device-farm-platform=both`. Its schema has no environment-variable
+mapping; the only platform-independent plugin environment variable found in
+the installed runtime is `DEVICE_FARM_HOME`, which controls metadata storage.
+Driver selection is still owned by the launcher, so an iOS or combined run must
+select `xcuitest` there alongside `uiautomator2`.
 
 ### Phase 2 — Network interception / trace pipeline
 
