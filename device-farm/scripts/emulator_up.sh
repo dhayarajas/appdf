@@ -182,8 +182,8 @@ MISSING_PACKAGES=()
 for package in "${REQUIRED_PACKAGES[@]}"; do
   grep -qF " ${package} " <<<"${INSTALLED}" || MISSING_PACKAGES+=("${package}")
 done
-# ${#arr[@]} on an empty array is an unbound-variable error under `set -u` in
-# bash 3.2, which is what stock macOS ships.
+# Only expand the array inside the branch: `"${arr[@]}"` on an empty array is an
+# unbound-variable error under `set -u` in bash 3.2, which stock macOS ships.
 if [[ -n "${MISSING_PACKAGES[*]:-}" ]]; then
   log "installing SDK packages: ${MISSING_PACKAGES[*]} ..."
   yes 2>/dev/null | sdkmanager --licenses >/dev/null 2>&1
