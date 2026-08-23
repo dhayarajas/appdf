@@ -10,7 +10,7 @@ PYTEST_ARGS ?=
 
 .DEFAULT_GOAL := help
 .PHONY: help provision preflight install test smoke har emulator emulator-down install-ca \
-	collect validate clean
+	debug debug-android debug-ios collect validate clean
 
 help: ## Show available targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -39,6 +39,15 @@ emulator-down: ## Shut the emulator down
 
 install-ca: ## Install the mitmproxy CA into the device system trust store (rooted only)
 	bash $(FARM_DIR)/scripts/install_system_ca.sh
+
+debug: ## Manual traffic debugging on the attached device (auto-detect platform)
+	bash $(FARM_DIR)/scripts/debug_traffic.sh $(DEBUG_ARGS)
+
+debug-android: ## Manual traffic debugging on an attached Android device
+	bash $(FARM_DIR)/scripts/debug_traffic.sh --platform android $(DEBUG_ARGS)
+
+debug-ios: ## Manual traffic debugging on an attached iPhone/iPad
+	bash $(FARM_DIR)/scripts/debug_traffic.sh --platform ios $(DEBUG_ARGS)
 
 har: ## Install the app under test, drive it, and assert on the exported HAR
 	cd $(FARM_DIR) && DEVICE_FARM_ENABLE_PROXY=1 DEVICE_FARM_ENABLE_DEVICE_PROXY=1 \
