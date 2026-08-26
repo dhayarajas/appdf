@@ -10,7 +10,7 @@ PYTEST_ARGS ?=
 
 .DEFAULT_GOAL := help
 .PHONY: help provision preflight install test smoke har emulator emulator-down install-ca \
-	debug debug-android debug-ios collect validate clean
+	simulator simulator-down debug debug-android debug-ios collect validate clean
 
 help: ## Show available targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -36,6 +36,12 @@ emulator: ## Boot a headless root-capable Android emulator (KVM on Linux, Hyperv
 
 emulator-down: ## Shut the emulator down
 	bash $(FARM_DIR)/scripts/emulator_up.sh --stop
+
+simulator: ## Boot a simulator (iOS simctl on macOS, Android emulator elsewhere)
+	bash $(FARM_DIR)/scripts/simulator_up.sh $(SIM_ARGS)
+
+simulator-down: ## Shut the simulator down
+	bash $(FARM_DIR)/scripts/simulator_up.sh --stop $(SIM_ARGS)
 
 install-ca: ## Install the mitmproxy CA into the device system trust store (rooted only)
 	bash $(FARM_DIR)/scripts/install_system_ca.sh
