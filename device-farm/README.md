@@ -327,6 +327,39 @@ simulator, the host's system proxy), and the CA is trusted under Settings →
 General → About → Certificate Trust Settings. Everything else — HAR/PCAP
 naming, artifacts, fixtures — is shared.
 
+## Manual traffic debugging (no test code)
+
+`scripts/debug_traffic.sh` is the interactive counterpart to `run_e2e_farm.sh`:
+it routes an attached device through `mitmweb`, so the app can be driven **by
+hand** while every request streams into a browser UI. On Ctrl-C it clears the
+device proxy and converts the live flows to a HAR under
+`artifacts/<run-id>/traces/`. No Appium session and no WebDriverAgent are
+involved, so it works on a real iPhone without code signing.
+
+```bash
+./scripts/debug_traffic.sh --check                 # tooling + device report only
+make debug                                        # auto-detect the platform
+make debug-android DEBUG_ARGS="--app ~/build/app.apk"
+make debug-ios     DEBUG_ARGS="--app ~/build/app.ipa"
+./scripts/debug_traffic.sh --stop                 # clear a proxy left behind
+```
+
+What it does per platform:
+
+| Step | Android | iOS |
+| --- | --- | --- |
+| Device discovery | `adb devices` | `idevice_id -l`, falling back to `xcrun devicectl` |
+| App install (`--app`) | `adb install -r -g` | `ios-deploy --bundle` (the `.ipa` must be signed for that UDID) |
+| Proxy configuration | automatic: `adb shell settings put global http_proxy` (`10.0.2.2` for emulators, the host LAN IP for physical devices) | printed instructions: Settings → Wi-Fi → ⓘ → Configure Proxy → Manual |
+| Teardown | proxy reset to `:0` | reminder to switch Configure Proxy back to Off |
+
+The usual caveats apply: HTTPS bodies stay encrypted until the mitmproxy CA is
+trusted on the device (iOS additionally needs full trust under Settings →
+General → About → Certificate Trust Settings), and pinned apps refuse to
+connect through the proxy at all. Missing tooling and missing devices are
+reported as warnings — `--check` exits non-zero, but the script still starts
+`mitmweb` so the UI can be used while a device is being attached.
+
 ### Pinned vs unpinned apps
 
 | App | Result |
@@ -360,6 +393,8 @@ All settings are environment variables (see `framework/config.py`):
 | `DEVICE_FARM_HOST_IP` | auto-detected | Host address a physical device should reach the proxy on |
 | `DEVICE_FARM_AVD_NAME` | `farm34` | AVD used by `scripts/emulator_up.sh` |
 | `DEVICE_FARM_AVD_API` | `34` | Emulator API level (also selects build-tools) |
+| `DEVICE_FARM_PROXY_PORT` | `8080` | `debug_traffic.sh` mitmweb proxy port |
+| `DEVICE_FARM_WEB_PORT` | `8081` | `debug_traffic.sh` mitmweb UI port |
 
 ## Troubleshooting
 
@@ -369,6 +404,12 @@ All settings are environment variables (see `framework/config.py`):
   `adb kill-server && adb start-server`.
 - **Empty HAR** — mitmproxy CA not trusted on the device, or the app pins
   certificates. Only plaintext/metadata is captured in that case.
+- **iPhone missing from the device-farm dashboard** — the plugin only discovers
+  iOS devices when Appium is started with the `xcuitest` driver
+  (`--use-drivers=uiautomator2,xcuitest`) and `idevice_id -l` sees the phone;
+  a stale server still holding port 4723 is the other common cause. "Use this
+  device" (live view) additionally needs a WebDriverAgent signed for that
+  device — use `scripts/debug_traffic.sh` when only traffic matters.
 - **tcpdump permission denied** — run with root or grant
   `sudo setcap cap_net_raw,cap_net_admin=eip $(command -v tcpdump)`; otherwise
   leave `DEVICE_FARM_ENABLE_PCAP=0`.
