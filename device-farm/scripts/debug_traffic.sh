@@ -48,17 +48,21 @@ warn() { printf '[debug] WARN  %s\n' "$*" >&2; }
 die() { printf '[debug] ERROR %s\n' "$*" >&2; exit 1; }
 have() { command -v "$1" >/dev/null 2>&1; }
 
+# `shift 2` is a no-op when only the flag itself is left, which would spin the
+# parsing loop forever, so a missing value is rejected up front.
+need_value() { (( $2 >= 2 )) || die "$1 requires a value (try --help)"; }
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --platform) PLATFORM="${2:-}"; shift 2 ;;
-    --udid) UDID="${2:-}"; shift 2 ;;
-    --app) APP_PATH="${2:-}"; shift 2 ;;
-    --proxy-port) PROXY_PORT="${2:-}"; shift 2 ;;
-    --web-port) WEB_PORT="${2:-}"; shift 2 ;;
+    --platform) need_value "$1" $#; PLATFORM="$2"; shift 2 ;;
+    --udid) need_value "$1" $#; UDID="$2"; shift 2 ;;
+    --app) need_value "$1" $#; APP_PATH="$2"; shift 2 ;;
+    --proxy-port) need_value "$1" $#; PROXY_PORT="$2"; shift 2 ;;
+    --web-port) need_value "$1" $#; WEB_PORT="$2"; shift 2 ;;
     --no-proxy-setup) SETUP_PROXY=0; shift ;;
     --check) MODE=check; shift ;;
     --stop) MODE=stop; shift ;;
-    -h|--help) sed -n '2,32p' "${BASH_SOURCE[0]}"; exit 0 ;;
+    -h|--help) sed -n '2,31p' "${BASH_SOURCE[0]}"; exit 0 ;;
     *) die "unknown option: $1 (try --help)" ;;
   esac
 done

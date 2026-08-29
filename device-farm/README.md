@@ -327,6 +327,50 @@ simulator, the host's system proxy), and the CA is trusted under Settings →
 General → About → Certificate Trust Settings. Everything else — HAR/PCAP
 naming, artifacts, fixtures — is shared.
 
+### iOS simulator
+
+`scripts/simulator_up.sh` is the simulator entrypoint: on macOS it drives
+`simctl`, and anywhere else it hands over to `scripts/emulator_up.sh`, so
+`make simulator` boots *a* simulator on whatever host you are on.
+
+```bash
+./scripts/simulator_up.sh --list                    # runtimes + available devices
+./scripts/simulator_up.sh --check                   # readiness only, nothing booted
+make simulator                                      # boot the default "iPhone 16"
+make simulator SIM_ARGS='--device "iPhone 16 Pro" --app ~/build/MyApp.app'
+make simulator-down
+```
+
+It creates the simulator when it does not exist yet (`simctl create` with the
+newest installed iOS runtime, or `--runtime`), boots it via `simctl bootstatus`,
+opens `Simulator.app`, and installs `--app` — then prints the `run_e2e_farm.sh`
+invocation with the resolved UDID.
+
+Two differences from a physical iPhone decide how traffic is captured:
+
+- A simulator runs a **simulator build (`.app`)**. A device `.ipa` cannot be
+  installed into it, so `--app foo.ipa` is rejected with that reason.
+- A simulator has **no network stack of its own** — it uses the host's, so there
+  is no per-device proxy setting to write (which is why `debug_traffic.sh` has
+  no simulator branch). Point macOS itself at mitmproxy instead:
+
+```bash
+.venv/bin/mitmweb --listen-port 8080 --web-port 8081   # terminal 1
+./scripts/simulator_up.sh --set-proxy                  # macOS proxy -> mitmproxy (sudo)
+./scripts/simulator_up.sh --trust-ca                   # simctl keychain add-root-cert
+./scripts/simulator_up.sh --unset-proxy                # when finished
+```
+
+`--set-proxy` uses `networksetup` on the first active network service; override
+the service with `DEVICE_FARM_NETWORK_SERVICE='Wi-Fi'`. `--trust-ca` installs
+the CA into the *booted simulator's* trust store, not into macOS, so it must be
+re-run for each new simulator. On Android the equivalents stay where they were:
+`debug_traffic.sh --platform android` for the proxy and `make install-ca` for
+the CA.
+
+If `--list` shows no iOS runtimes, Xcode's first-launch install has not run:
+`sudo xcodebuild -runFirstLaunch`.
+
 ## Manual traffic debugging (no test code)
 
 `scripts/debug_traffic.sh` is the interactive counterpart to `run_e2e_farm.sh`:
@@ -395,6 +439,9 @@ All settings are environment variables (see `framework/config.py`):
 | `DEVICE_FARM_AVD_API` | `34` | Emulator API level (also selects build-tools) |
 | `DEVICE_FARM_PROXY_PORT` | `8080` | `debug_traffic.sh` mitmweb proxy port |
 | `DEVICE_FARM_WEB_PORT` | `8081` | `debug_traffic.sh` mitmweb UI port |
+| `DEVICE_FARM_SIM_NAME` | `iPhone 16` | Simulator booted by `scripts/simulator_up.sh` |
+| `DEVICE_FARM_SIM_RUNTIME` | newest installed | iOS runtime used when creating a simulator |
+| `DEVICE_FARM_NETWORK_SERVICE` | first active service | Network service `--set-proxy` reconfigures |
 
 ## Troubleshooting
 
