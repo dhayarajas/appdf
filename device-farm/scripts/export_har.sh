@@ -12,6 +12,7 @@
 #   scripts/export_har.sh --host verizon.com     # only flows for matching hosts
 #   scripts/export_har.sh --list                 # what is available to export
 #   scripts/export_har.sh --all                  # convert every run that has flows
+#   scripts/export_har.sh --check ~/Desktop/x.har   # why DevTools refuses a HAR
 #
 # Options:
 #   --run <id>       run id (or a path to a run dir / .flows file)
@@ -19,6 +20,7 @@
 #   --host <substr>  keep only flows whose host matches
 #   --filter <expr>  raw mitmproxy filter expression (overrides --host)
 #   --slim           drop response bodies (a big HAR will not open in DevTools)
+#   --check <har>    report what a strict reader (DevTools) rejects, fix nothing
 #   --all            export every run that has flows
 #   --list           list runs with flow sizes and exit
 #   --open           reveal the HAR in Finder/xdg-open when done
@@ -30,6 +32,7 @@ ARTIFACTS_ROOT="${DEVICE_FARM_ARTIFACTS_ROOT:-${FARM_DIR}/artifacts}"
 RUN=""
 OUT=""
 FILTER=""
+CHECK=""
 MODE=one
 OPEN_AFTER=0
 SLIM=0
@@ -49,10 +52,11 @@ while [[ $# -gt 0 ]]; do
     --host) need_value "$1" $#; FILTER="~d $2"; shift 2 ;;
     --filter) need_value "$1" $#; FILTER="$2"; shift 2 ;;
     --slim) SLIM=1; shift ;;
+    --check) need_value "$1" $#; CHECK="$2"; MODE=check; shift 2 ;;
     --all) MODE=all; shift ;;
     --list) MODE=list; shift ;;
     --open) OPEN_AFTER=1; shift ;;
-    -h|--help) sed -n '2,25p' "${BASH_SOURCE[0]}"; exit 0 ;;
+    -h|--help) sed -n '2,26p' "${BASH_SOURCE[0]}"; exit 0 ;;
     *) die "unknown option: $1 (try --help)" ;;
   esac
 done
@@ -63,7 +67,10 @@ if [[ -x "${FARM_DIR}/.venv/bin/mitmdump" ]]; then
 elif command -v mitmdump >/dev/null 2>&1; then
   MITMDUMP="$(command -v mitmdump)"
 fi
-[[ -n "${MITMDUMP}" ]] || die "mitmdump not found; run 'make install' or 'pip install mitmproxy'"
+# --check reads an existing HAR, so it needs neither mitmdump nor a run.
+if [[ "${MODE}" != check ]]; then
+  [[ -n "${MITMDUMP}" ]] || die "mitmdump not found; run 'make install' or 'pip install mitmproxy'"
+fi
 
 if [[ -x "${FARM_DIR}/.venv/bin/python" ]]; then
   PYTHON="${FARM_DIR}/.venv/bin/python"
@@ -72,7 +79,9 @@ else
 fi
 HAR_REPAIR="${FARM_DIR}/proxy/har_repair.py"
 
-[[ -d "${ARTIFACTS_ROOT}" ]] || die "no artifacts directory at ${ARTIFACTS_ROOT}"
+if [[ "${MODE}" != check ]]; then
+  [[ -d "${ARTIFACTS_ROOT}" ]] || die "no artifacts directory at ${ARTIFACTS_ROOT}"
+fi
 
 # Non-empty flow files, newest first. Empty ones are runs where nothing ever
 # crossed the proxy - listing them as exportable would only mislead.
@@ -121,6 +130,14 @@ repair() {
   "${PYTHON}" "${HAR_REPAIR}" "${args[@]}" || true
 }
 
+# The export is worth nothing if DevTools still refuses it, so say so here
+# rather than leaving the user to discover it in the browser.
+verify() {
+  [[ -n "${PYTHON}" && -f "${HAR_REPAIR}" ]] || return 0
+  "${PYTHON}" "${HAR_REPAIR}" "$1" --check >/dev/null 2>&1 \
+    || warn "this HAR still has fields strict readers reject: run --check \"$1\""
+}
+
 summarize() {
   local har="$1"
   "${PYTHON:-python3}" - "$har" <<'PY' 2>/dev/null || true
@@ -158,6 +175,7 @@ export_one() {
   }
   repair "${out}"
   log "har         : ${out} ($(human_size "${out}") bytes)"
+  verify "${out}"
   summarize "${out}"
   if (( OPEN_AFTER )); then
     if [[ "$(uname -s)" == "Darwin" ]]; then
@@ -169,6 +187,11 @@ export_one() {
 }
 
 case "${MODE}" in
+  check)
+    [[ -f "${CHECK}" ]] || die "no such HAR: ${CHECK}"
+    [[ -n "${PYTHON}" ]] || die "python3 not found"
+    "${PYTHON}" "${HAR_REPAIR}" "${CHECK}" --check
+    ;;
   list)
     found=0
     while read -r flows; do

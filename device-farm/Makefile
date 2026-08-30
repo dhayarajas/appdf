@@ -11,7 +11,7 @@ PYTEST_ARGS ?=
 .DEFAULT_GOAL := help
 .PHONY: help provision preflight install test smoke har emulator emulator-down install-ca \
 	simulator simulator-down farm farm-check farm-down debug debug-android debug-ios \
-	export-har list-runs collect validate clean
+	export-har list-runs check-har fix-har collect validate clean
 
 help: ## Show available targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -80,6 +80,12 @@ export-har: ## Export the newest captured run to a HAR (HAR_ARGS='--out ~/Deskto
 
 list-runs: ## List runs that captured traffic and can be exported
 	bash $(FARM_DIR)/scripts/export_har.sh --list
+
+check-har: ## Say why a strict reader (Chrome DevTools) refuses a HAR (HAR=path)
+	bash $(FARM_DIR)/scripts/export_har.sh --check $(HAR)
+
+fix-har: ## Repair an already-exported HAR in place (HAR=path)
+	$(PYTHON) $(FARM_DIR)/proxy/har_repair.py $(HAR)
 
 validate: ## Validate the artifact structure of the most recent run
 	$(PYTHON) $(FARM_DIR)/scripts/validate_run.py --latest --artifacts-root $(ARTIFACTS_ROOT)

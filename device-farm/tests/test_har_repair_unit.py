@@ -5,7 +5,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from proxy.har_repair import main, repair
+from proxy.har_repair import check, main, repair
+
+STARTED = "2026-08-30T17:26:28+00:00"
 
 FULL_TIMINGS = {
     "connect": 1,
@@ -20,7 +22,7 @@ FULL_TIMINGS = {
 # What mitmproxy writes for a flow that never got a response: no content size,
 # no timings the reader can use, and a null postData body.
 RESPONSELESS_ENTRY = {
-    "startedDateTime": "2026-08-30T17:26:28+00:00",
+    "startedDateTime": STARTED,
     "request": {
         "method": "POST",
         "url": "https://api.example/v1",
@@ -50,14 +52,16 @@ def test_repair_fills_the_fields_strict_readers_cast_to_number() -> None:
     entry = har["log"]["entries"][0]
     assert entry["time"] == -1
     assert entry["response"]["content"]["size"] == 0
-    assert entry["response"]["content"]["compression"] == 0
+    assert entry["response"]["content"]["mimeType"] == ""
     assert entry["request"]["postData"]["text"] == ""
     assert all(isinstance(v, (int, float)) for v in entry["timings"].values())
     assert har["log"]["version"] == "1.2"
+    assert check(har) == []
 
 
 def test_repair_leaves_valid_entries_untouched() -> None:
     valid = {
+        "startedDateTime": STARTED,
         "time": 27.6,
         "request": {"method": "GET", "url": "http://example/", "headersSize": 1, "bodySize": 0},
         "response": {
@@ -74,12 +78,54 @@ def test_repair_leaves_valid_entries_untouched() -> None:
     assert har["log"]["entries"][0] == valid
 
 
-def test_slim_drops_response_bodies() -> None:
+def test_repair_drops_optional_numbers_it_cannot_use() -> None:
+    # DevTools casts an optional field too once the key is present, so a bad
+    # value has to go away rather than be defaulted.
     har = _har(
         {
+            "startedDateTime": STARTED,
             "time": 1,
             "request": {"headersSize": 1, "bodySize": 0},
             "response": {
+                "status": 200,
+                "headersSize": 1,
+                "bodySize": 0,
+                "content": {"size": 0, "compression": None, "mimeType": ""},
+                "_transferSize": "unknown",
+            },
+            "timings": {"send": 0, "wait": 0, "receive": 0, "ssl": None},
+            "_webSocketMessages": [{"type": "send", "time": None, "opcode": 1, "data": "x"}],
+        }
+    )
+
+    assert repair(har) == 4
+
+    entry = har["log"]["entries"][0]
+    assert "compression" not in entry["response"]["content"]
+    assert "_transferSize" not in entry["response"]
+    assert "ssl" not in entry["timings"]
+    assert "time" not in entry["_webSocketMessages"][0]
+    assert check(har) == []
+
+
+def test_check_reports_problems_without_changing_anything() -> None:
+    har = _har(RESPONSELESS_ENTRY)
+    before = json.dumps(har)
+
+    problems = check(har)
+
+    assert any("content.size" in p for p in problems)
+    assert json.dumps(har) == before
+
+
+def test_slim_drops_response_bodies() -> None:
+    har = _har(
+        {
+            "startedDateTime": STARTED,
+            "time": 1,
+            "request": {"headersSize": 1, "bodySize": 0},
+            "response": {
+                "status": 200,
                 "headersSize": 1,
                 "bodySize": 3,
                 "content": {"size": 3, "compression": 0, "text": "abc", "encoding": "base64"},
@@ -101,8 +147,17 @@ def test_main_rewrites_the_file_and_reports_bad_input(tmp_path: Path) -> None:
 
     assert main([str(path)]) == 0
     assert json.loads(path.read_text())["log"]["entries"][0]["response"]["content"]["size"] == 0
+    assert main([str(path), "--check"]) == 0
 
     not_a_har = tmp_path / "other.json"
     not_a_har.write_text("{}")
     assert main([str(not_a_har)]) == 1
     assert main([str(tmp_path / "missing.har")]) == 1
+
+
+def test_main_check_fails_on_a_har_devtools_would_reject(tmp_path: Path) -> None:
+    path = tmp_path / "broken.har"
+    path.write_text(json.dumps(_har(RESPONSELESS_ENTRY)))
+
+    assert main([str(path), "--check"]) == 1
+    assert json.loads(path.read_text())["log"]["entries"][0]["response"]["content"] == {}

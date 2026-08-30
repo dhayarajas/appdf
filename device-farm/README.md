@@ -444,8 +444,21 @@ Every HAR — including the ones written on Ctrl-C — goes through
 `proxy/har_repair.py`, because mitmproxy omits required numeric fields for flows
 that never got a response (client aborts, CONNECT tunnels). Strict readers reject
 the *whole* file over one such entry: Chrome DevTools fails the import with
-`Casting to number results in NaN`. The pass fills those fields with HAR's
-"unknown" sentinels and leaves valid entries alone.
+`Casting to number results in NaN`. The pass mirrors what DevTools' own reader
+casts — every required number gets HAR's "unknown" sentinel, and an optional one
+it cannot use (`null`, `NaN`, a string) is dropped rather than guessed, since a
+present key is cast too. Valid entries are left alone.
+
+If a HAR still refuses to open, ask why instead of guessing — this reports the
+exact fields a strict reader rejects, and changes nothing:
+
+```bash
+make check-har HAR=~/Desktop/app.har   # e.g. log.entries[7].timings.receive: None is not a number
+make fix-har   HAR=~/Desktop/app.har   # repair a HAR exported by an older checkout
+```
+
+Empty output from `check-har` means the file is fine and the failure is
+elsewhere (usually its size — see below).
 
 A real session easily produces tens of MB of HAR, which DevTools will not open;
 narrow it with `--host`, or keep every request and drop the bodies:
