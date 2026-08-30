@@ -18,6 +18,7 @@
 #   --out <path>     HAR destination (default: next to the flows)
 #   --host <substr>  keep only flows whose host matches
 #   --filter <expr>  raw mitmproxy filter expression (overrides --host)
+#   --slim           drop response bodies (a big HAR will not open in DevTools)
 #   --all            export every run that has flows
 #   --list           list runs with flow sizes and exit
 #   --open           reveal the HAR in Finder/xdg-open when done
@@ -31,6 +32,7 @@ OUT=""
 FILTER=""
 MODE=one
 OPEN_AFTER=0
+SLIM=0
 
 log() { printf '[har] %s\n' "$*"; }
 warn() { printf '[har] WARN  %s\n' "$*" >&2; }
@@ -46,10 +48,11 @@ while [[ $# -gt 0 ]]; do
     --out) need_value "$1" $#; OUT="$2"; shift 2 ;;
     --host) need_value "$1" $#; FILTER="~d $2"; shift 2 ;;
     --filter) need_value "$1" $#; FILTER="$2"; shift 2 ;;
+    --slim) SLIM=1; shift ;;
     --all) MODE=all; shift ;;
     --list) MODE=list; shift ;;
     --open) OPEN_AFTER=1; shift ;;
-    -h|--help) sed -n '2,24p' "${BASH_SOURCE[0]}"; exit 0 ;;
+    -h|--help) sed -n '2,25p' "${BASH_SOURCE[0]}"; exit 0 ;;
     *) die "unknown option: $1 (try --help)" ;;
   esac
 done
@@ -61,6 +64,13 @@ elif command -v mitmdump >/dev/null 2>&1; then
   MITMDUMP="$(command -v mitmdump)"
 fi
 [[ -n "${MITMDUMP}" ]] || die "mitmdump not found; run 'make install' or 'pip install mitmproxy'"
+
+if [[ -x "${FARM_DIR}/.venv/bin/python" ]]; then
+  PYTHON="${FARM_DIR}/.venv/bin/python"
+else
+  PYTHON="$(command -v python3 || true)"
+fi
+HAR_REPAIR="${FARM_DIR}/proxy/har_repair.py"
 
 [[ -d "${ARTIFACTS_ROOT}" ]] || die "no artifacts directory at ${ARTIFACTS_ROOT}"
 
@@ -102,9 +112,18 @@ resolve_flows() {
   return 1
 }
 
+# mitmproxy leaves fields unset for flows without a response, which makes strict
+# readers (Chrome DevTools) reject the whole file, so every HAR is repaired here.
+repair() {
+  local args=("$1")
+  [[ -n "${PYTHON}" && -f "${HAR_REPAIR}" ]] || return 0
+  (( SLIM )) && args+=(--slim)
+  "${PYTHON}" "${HAR_REPAIR}" "${args[@]}" || true
+}
+
 summarize() {
   local har="$1"
-  python3 - "$har" <<'PY' 2>/dev/null || true
+  "${PYTHON:-python3}" - "$har" <<'PY' 2>/dev/null || true
 import collections, json, sys
 try:
     entries = json.load(open(sys.argv[1]))["log"]["entries"]
@@ -137,7 +156,8 @@ export_one() {
     warn "no HAR written from ${flows} (nothing matched the filter?)"
     return 1
   }
-  log "har         : ${out}"
+  repair "${out}"
+  log "har         : ${out} ($(human_size "${out}") bytes)"
   summarize "${out}"
   if (( OPEN_AFTER )); then
     if [[ "$(uname -s)" == "Darwin" ]]; then
