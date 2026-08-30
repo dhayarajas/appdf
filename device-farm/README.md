@@ -415,6 +415,31 @@ mitmproxy CA is trusted on each target — `scripts/install_system_ca.sh` for a
 rooted emulator, `scripts/simulator_up.sh --trust-ca` for a simulator,
 `http://mitm.it` on a physical device.
 
+## Exporting a capture (`make export-har`)
+
+Ctrl-C on a farm/debug run already writes a HAR, but a run that is killed, or one
+whose flows should be sliced differently, leaves only the raw `.flows`.
+`scripts/export_har.sh` converts them without having to dig a run id out of
+`artifacts/`: it defaults to the **newest run that actually captured traffic**
+and skips empty ones, since those only mean the device never reached the proxy.
+
+```bash
+make export-har                                        # newest capture -> HAR beside its flows
+make list-runs                                         # what is available to export
+make export-har HAR_ARGS="--out ~/Desktop/app.har"     # somewhere convenient
+make export-har HAR_ARGS="--host verizon.com"          # only matching hosts
+make export-har HAR_ARGS="--run farm-20260830T101853Z" # a specific run
+make export-har HAR_ARGS="--all"                       # every run that has flows
+```
+
+`--run` also accepts a run directory or a `.flows` path, `--filter` takes a raw
+[mitmproxy filter expression](https://docs.mitmproxy.org/stable/concepts-filters/)
+when `--host` is too blunt, and `--open` reveals the result in Finder. Each
+export prints the entry count and the top hosts, which is the quickest way to
+tell a real capture from an accidentally-empty one. Import the HAR into Chrome
+DevTools → Network, or reopen the flows interactively with
+`.venv/bin/mitmweb -r <path>.flows`.
+
 ## Manual traffic debugging (no test code)
 
 `scripts/debug_traffic.sh` is the interactive counterpart to `run_e2e_farm.sh`:
