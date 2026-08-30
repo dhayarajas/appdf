@@ -24,6 +24,7 @@ logs how to convert it (``mitmdump -nr <file>.flows --set hardump=<file>.har``).
 from __future__ import annotations
 
 import contextlib
+import json
 import logging
 import os
 import shutil
@@ -36,6 +37,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from framework.devices import adb_available, detect_host_ip, proxy_host_for_device, run_adb
+from proxy.har_repair import repair as repair_har
 
 LOGGER = logging.getLogger(__name__)
 
@@ -200,6 +202,7 @@ class ProxyManager:
             session.process = None
         session.started = False
         if session.har_path.exists():
+            self._repair_har(session.har_path)
             LOGGER.info(
                 "HAR written: %s (%d bytes)", session.har_path, session.har_path.stat().st_size
             )
@@ -210,6 +213,20 @@ class ProxyManager:
                 session.har_path,
             )
         return session
+
+    @staticmethod
+    def _repair_har(har_path: Path) -> None:
+        """Fill in the fields mitmproxy omits for responseless flows.
+
+        Without this a single aborted request makes strict readers such as
+        Chrome DevTools reject the whole file.
+        """
+        try:
+            har = json.loads(har_path.read_text(encoding="utf-8"))
+            if repair_har(har):
+                har_path.write_text(json.dumps(har), encoding="utf-8")
+        except (OSError, ValueError) as exc:
+            LOGGER.warning("could not repair %s: %s", har_path, exc)
 
     def __enter__(self) -> ProxySession:
         return self.start()

@@ -270,11 +270,9 @@ MITM_PID=""
 export_har() {
   [[ -s "${FLOW_FILE}" && -n "${MITMDUMP}" ]] || return 0
   log "exporting HAR ..."
-  if "${MITMDUMP}" -q -nr "${FLOW_FILE}" --set "hardump=${HAR_FILE}" >/dev/null 2>&1; then
-    log "har         : ${HAR_FILE}"
-  else
-    warn "HAR export failed; the raw flows are still at ${FLOW_FILE}"
-  fi
+  # Delegated so the HAR gets the same repair pass as `make export-har`.
+  bash "${FARM_DIR}/scripts/export_har.sh" --run "${FLOW_FILE}" --out "${HAR_FILE}" \
+    || warn "HAR export failed; the raw flows are still at ${FLOW_FILE}"
 }
 
 cleanup() {

@@ -298,8 +298,8 @@ export_har() {
     return 0
   }
   log "exporting HAR ..."
-  "${MITMDUMP}" -q -nr "${FLOW_FILE}" --set "hardump=${HAR_FILE}" >/dev/null 2>&1 \
-    && log "har         : ${HAR_FILE}" \
+  # Delegated so the HAR gets the same repair pass as `make export-har`.
+  bash "${FARM_DIR}/scripts/export_har.sh" --run "${FLOW_FILE}" --out "${HAR_FILE}" \
     || warn "HAR export failed; the raw flows are still at ${FLOW_FILE}"
 }
 

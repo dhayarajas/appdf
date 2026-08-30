@@ -440,6 +440,20 @@ tell a real capture from an accidentally-empty one. Import the HAR into Chrome
 DevTools → Network, or reopen the flows interactively with
 `.venv/bin/mitmweb -r <path>.flows`.
 
+Every HAR — including the ones written on Ctrl-C — goes through
+`proxy/har_repair.py`, because mitmproxy omits required numeric fields for flows
+that never got a response (client aborts, CONNECT tunnels). Strict readers reject
+the *whole* file over one such entry: Chrome DevTools fails the import with
+`Casting to number results in NaN`. The pass fills those fields with HAR's
+"unknown" sentinels and leaves valid entries alone.
+
+A real session easily produces tens of MB of HAR, which DevTools will not open;
+narrow it with `--host`, or keep every request and drop the bodies:
+
+```bash
+make export-har HAR_ARGS="--slim --out ~/Desktop/app.har"
+```
+
 ## Manual traffic debugging (no test code)
 
 `scripts/debug_traffic.sh` is the interactive counterpart to `run_e2e_farm.sh`:
