@@ -11,7 +11,7 @@ PYTEST_ARGS ?=
 .DEFAULT_GOAL := help
 .PHONY: help provision preflight install test smoke har emulator emulator-down install-ca \
 	simulator simulator-down farm farm-check farm-down debug debug-android debug-ios \
-	collect validate clean
+	export-har list-runs collect validate clean
 
 help: ## Show available targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -74,6 +74,12 @@ smoke: ## Hardware-free end-to-end self-check of the scaffold
 
 collect: ## Hardware-free check: collect tests only
 	cd $(FARM_DIR) && $(PYTHON) -m pytest --collect-only -q
+
+export-har: ## Export the newest captured run to a HAR (HAR_ARGS='--out ~/Desktop/x.har')
+	bash $(FARM_DIR)/scripts/export_har.sh $(HAR_ARGS)
+
+list-runs: ## List runs that captured traffic and can be exported
+	bash $(FARM_DIR)/scripts/export_har.sh --list
 
 validate: ## Validate the artifact structure of the most recent run
 	$(PYTHON) $(FARM_DIR)/scripts/validate_run.py --latest --artifacts-root $(ARTIFACTS_ROOT)

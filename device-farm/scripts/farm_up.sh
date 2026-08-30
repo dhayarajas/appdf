@@ -291,7 +291,12 @@ MITM_PID=""
 APPIUM_PID=""
 
 export_har() {
-  [[ -s "${FLOW_FILE}" && -n "${MITMDUMP}" ]] || return 0
+  [[ -n "${MITMDUMP}" ]] || return 0
+  [[ -s "${FLOW_FILE}" ]] || {
+    log "no flows captured, so no HAR: nothing reached the proxy on :${PROXY_PORT}"
+    log "  check the device really points at ${HOST_IP:-<host>}:${PROXY_PORT}"
+    return 0
+  }
   log "exporting HAR ..."
   "${MITMDUMP}" -q -nr "${FLOW_FILE}" --set "hardump=${HAR_FILE}" >/dev/null 2>&1 \
     && log "har         : ${HAR_FILE}" \
@@ -384,6 +389,7 @@ cat <<EOF
 [farm] WebDriverAgent; Android streams without extra setup.
 [farm] ------------------------------------------------
 [farm] Press Ctrl-C to clear every proxy, stop both servers and write the HAR.
+[farm] Killed the run instead? scripts/export_har.sh converts the newest flows.
 [farm] ================================================
 
 EOF
