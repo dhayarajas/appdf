@@ -371,6 +371,50 @@ the CA.
 If `--list` shows no iOS runtimes, Xcode's first-launch install has not run:
 `sudo xcodebuild -runFirstLaunch`.
 
+## One farm for everything (`make farm`)
+
+`scripts/farm_up.sh` starts the whole farm in one command: the Appium
+device-farm dashboard with **every installed driver**, so Android devices,
+Android emulators, real iPhones and booted iOS simulators all appear in the same
+page, plus a single `mitmweb` instance that each of those targets is routed
+through. Network tracing is therefore on by default — nothing has to be wired up
+per device.
+
+```bash
+make farm-check              # tooling + inventory, starts nothing
+make farm                    # dashboard + proxy, everything wired up
+make farm-down               # clear proxies left behind by an interrupted run
+make farm FARM_ARGS="--no-proxy-setup"    # UIs only, leave proxies alone
+```
+
+It prints the two URLs it owns: `http://127.0.0.1:4723/device-farm/` (device
+list, live view) and `http://127.0.0.1:8081` (live requests). Ctrl-C clears
+every proxy it set, stops both servers, and writes
+`artifacts/<run-id>/traces/farm-<run-id>.har`.
+
+How each target reaches the proxy:
+
+| Target | Discovery | Routed through the farm proxy by |
+| --- | --- | --- |
+| Android device | `adb devices` | `adb shell settings put global http_proxy <host-lan-ip>:8080` |
+| Android emulator | `adb devices` | same, with the QEMU host alias `10.0.2.2:8080` |
+| iOS simulator | `xcrun simctl list devices booted` | the macOS system proxy (`networksetup`), since a simulator shares the Mac's network stack |
+| Real iPhone | `idevice_id -l` | printed instructions — iOS has no scriptable proxy |
+
+The dashboard lists iOS only when the `xcuitest` driver is installed
+(`appium driver install xcuitest`) and simulators only when an iOS runtime
+exists (`sudo xcodebuild -runFirstLaunch && xcodebuild -downloadPlatform iOS`);
+the script says so explicitly instead of showing an empty pool. Plugin options
+are passed as CLI flags (`--plugin-device-farm-platform=both`), so a stale
+config file can never narrow discovery back to a single platform.
+
+Two limits worth knowing: the dashboard's **live view / remote control of a real
+iPhone** still needs a WebDriverAgent signed with your Apple team (Android
+streams without extra setup), and HTTPS bodies stay encrypted until the
+mitmproxy CA is trusted on each target — `scripts/install_system_ca.sh` for a
+rooted emulator, `scripts/simulator_up.sh --trust-ca` for a simulator,
+`http://mitm.it` on a physical device.
+
 ## Manual traffic debugging (no test code)
 
 `scripts/debug_traffic.sh` is the interactive counterpart to `run_e2e_farm.sh`:
@@ -437,8 +481,10 @@ All settings are environment variables (see `framework/config.py`):
 | `DEVICE_FARM_HOST_IP` | auto-detected | Host address a physical device should reach the proxy on |
 | `DEVICE_FARM_AVD_NAME` | `farm34` | AVD used by `scripts/emulator_up.sh` |
 | `DEVICE_FARM_AVD_API` | `34` | Emulator API level (also selects build-tools) |
-| `DEVICE_FARM_PROXY_PORT` | `8080` | `debug_traffic.sh` mitmweb proxy port |
-| `DEVICE_FARM_WEB_PORT` | `8081` | `debug_traffic.sh` mitmweb UI port |
+| `DEVICE_FARM_PROXY_PORT` | `8080` | mitmweb proxy port (`debug_traffic.sh`, `farm_up.sh`) |
+| `DEVICE_FARM_WEB_PORT` | `8081` | mitmweb UI port (`debug_traffic.sh`, `farm_up.sh`) |
+| `DEVICE_FARM_APPIUM_PORT` | `4723` | Dashboard/Appium port used by `farm_up.sh` |
+| `DEVICE_FARM_APPIUM_HOST` | `0.0.0.0` | Dashboard bind address (LAN-wide by default) |
 | `DEVICE_FARM_SIM_NAME` | `iPhone 16` | Simulator booted by `scripts/simulator_up.sh` |
 | `DEVICE_FARM_SIM_RUNTIME` | newest installed | iOS runtime used when creating a simulator |
 | `DEVICE_FARM_NETWORK_SERVICE` | first active service | Network service `--set-proxy` reconfigures |
