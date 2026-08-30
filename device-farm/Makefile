@@ -10,7 +10,8 @@ PYTEST_ARGS ?=
 
 .DEFAULT_GOAL := help
 .PHONY: help provision preflight install test smoke har emulator emulator-down install-ca \
-	simulator simulator-down debug debug-android debug-ios collect validate clean
+	simulator simulator-down farm farm-check farm-down debug debug-android debug-ios \
+	collect validate clean
 
 help: ## Show available targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -42,6 +43,15 @@ simulator: ## Boot a simulator (iOS simctl on macOS, Android emulator elsewhere)
 
 simulator-down: ## Shut the simulator down
 	bash $(FARM_DIR)/scripts/simulator_up.sh --stop $(SIM_ARGS)
+
+farm: ## Dashboard + shared interception proxy for every attached device/simulator
+	bash $(FARM_DIR)/scripts/farm_up.sh $(FARM_ARGS)
+
+farm-check: ## Report farm tooling and device/simulator inventory only
+	bash $(FARM_DIR)/scripts/farm_up.sh --check $(FARM_ARGS)
+
+farm-down: ## Clear proxies left behind by an interrupted farm run
+	bash $(FARM_DIR)/scripts/farm_up.sh --stop $(FARM_ARGS)
 
 install-ca: ## Install the mitmproxy CA into the device system trust store (rooted only)
 	bash $(FARM_DIR)/scripts/install_system_ca.sh

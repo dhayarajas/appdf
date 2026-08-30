@@ -299,12 +299,14 @@ log "starting mitmweb (proxy :${PROXY_PORT}, ui :${WEB_PORT}) ..."
   >"${MITM_LOG}" 2>&1 &
 MITM_PID=$!
 
+# mitmweb block-buffers its log when stdout is not a tty, so readiness is taken
+# from the UI port rather than from the log text.
 waited=0
-until grep -q "Web server listening" "${MITM_LOG}" 2>/dev/null; do
+until curl -fsS --max-time 2 "http://127.0.0.1:${WEB_PORT}/" >/dev/null 2>&1; do
   kill -0 "${MITM_PID}" 2>/dev/null || { warn "mitmweb exited early; see ${MITM_LOG}"; exit 1; }
   sleep 1
   waited=$((waited + 1))
-  (( waited >= 30 )) && { warn "mitmweb did not report readiness in 30s; see ${MITM_LOG}"; break; }
+  (( waited >= 30 )) && { warn "mitmweb did not answer on :${WEB_PORT} in 30s; see ${MITM_LOG}"; break; }
 done
 
 install_app
